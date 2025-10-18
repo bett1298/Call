@@ -15,51 +15,99 @@
     h1 {
       color: #ff4f87;
     }
+    .video-container {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin: 20px 0;
+      flex-wrap: wrap;
+    }
     video {
       width: 45%;
+      min-width: 300px;
       border-radius: 12px;
       background: #000;
-      margin: 10px;
+      border: 2px solid #ff4f87;
+    }
+    .controls {
+      margin: 20px 0;
     }
     button {
       background: #ff4f87;
       color: white;
       border: none;
-      padding: 10px 18px;
+      padding: 12px 24px;
       border-radius: 8px;
       margin: 5px;
       cursor: pointer;
-      font-size: 15px;
+      font-size: 16px;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: #e03e6d;
+    }
+    button:disabled {
+      background: #cccccc;
+      cursor: not-allowed;
     }
     input {
-      padding: 8px;
-      width: 200px;
+      padding: 12px;
+      width: 250px;
       border-radius: 8px;
-      border: 1px solid #ddd;
+      border: 2px solid #ff4f87;
       margin: 5px;
+      font-size: 16px;
+    }
+    #status {
+      margin: 20px 0;
+      padding: 10px;
+      border-radius: 8px;
+      font-weight: bold;
+      min-height: 24px;
+    }
+    .status-connecting {
+      background: #fffacd;
+      color: #856404;
+    }
+    .status-connected {
+      background: #d4edda;
+      color: #155724;
+    }
+    .status-error {
+      background: #f8d7da;
+      color: #721c24;
     }
   </style>
 </head>
 <body>
   <h1>🎥 DateLink — Call Room</h1>
-  <div>
-    <video id="localVideo" autoplay playsinline muted></video>
-    <video id="remoteVideo" autoplay playsinline></video>
+  
+  <div class="video-container">
+    <div>
+      <h3>You</h3>
+      <video id="localVideo" autoplay playsinline muted></video>
+    </div>
+    <div>
+      <h3>Partner</h3>
+      <video id="remoteVideo" autoplay playsinline></video>
+    </div>
   </div>
 
-  <div>
+  <div class="controls">
     <button id="createBtn">Create Call</button>
-    <input id="callIdInput" placeholder="Enter Call ID" />
+    <input id="callIdInput" placeholder="Enter Call ID to join" />
     <button id="joinBtn">Join Call</button>
+    <button id="hangupBtn" style="background: #dc3545;">Hang Up</button>
   </div>
 
-  <p id="status"></p>
+  <p id="status">Ready to connect...</p>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
     import {
       getFirestore, collection, doc, setDoc, getDoc,
-      onSnapshot, updateDoc
+      onSnapshot, updateDoc, deleteDoc
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
     // --- Firebase Config ---
@@ -77,148 +125,294 @@
 
     const servers = {
       iceServers: [
-        { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
       ]
     };
 
-    const pc = new RTCPeerConnection(servers);
+    let pc = null;
+    let callDoc = null;
+    let isCaller = false;
 
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
     const createBtn = document.getElementById('createBtn');
     const joinBtn = document.getElementById('joinBtn');
+    const hangupBtn = document.getElementById('hangupBtn');
     const callIdInput = document.getElementById('callIdInput');
     const status = document.getElementById('status');
 
-    let localStream;
-    let remoteStream = new MediaStream();
-    remoteVideo.srcObject = remoteStream;
+    let localStream = null;
+    let remoteStream = null;
 
-    // ✅ Get local media
+    // ✅ Initialize media
     async function initMedia() {
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localStream;
-
-        // Add each track to the peer connection
-        localStream.getTracks().forEach(track => {
-          pc.addTrack(track, localStream);
+        if (localStream) {
+          return localStream;
+        }
+        
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: 1280, height: 720 },
+          audio: true 
         });
-
+        localVideo.srcObject = localStream;
         console.log("✅ Local media ready");
+        return localStream;
       } catch (err) {
         console.error("Media access error:", err);
-        alert("Please allow camera and microphone access.");
+        updateStatus("Error: Please allow camera and microphone access.", "error");
+        throw err;
       }
     }
 
-    // ✅ Receive remote stream
-    pc.ontrack = event => {
-      console.log("🎥 Received remote track:", event.streams[0]);
-      event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
-    };
+    // ✅ Create new peer connection
+    function createPeerConnection() {
+      const newPC = new RTCPeerConnection(servers);
+      
+      // Add local tracks
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          newPC.addTrack(track, localStream);
+        });
+      }
 
-    // ✅ Connection state logs
-    pc.onconnectionstatechange = () => console.log("Connection state:", pc.connectionState);
+      // Handle remote stream
+      newPC.ontrack = event => {
+        console.log("🎥 Received remote tracks:", event.streams);
+        if (event.streams && event.streams[0]) {
+          remoteStream = event.streams[0];
+          remoteVideo.srcObject = remoteStream;
+          updateStatus("Connected! You can see each other now.", "connected");
+        }
+      };
+
+      // Connection state handling
+      newPC.onconnectionstatechange = () => {
+        console.log("Connection state:", newPC.connectionState);
+        switch(newPC.connectionState) {
+          case "connected":
+            updateStatus("Connected!", "connected");
+            break;
+          case "disconnected":
+          case "failed":
+            updateStatus("Connection lost", "error");
+            break;
+          case "connecting":
+            updateStatus("Connecting...", "connecting");
+            break;
+        }
+      };
+
+      newPC.oniceconnectionstatechange = () => {
+        console.log("ICE connection state:", newPC.iceConnectionState);
+      };
+
+      return newPC;
+    }
+
+    // ✅ Update status
+    function updateStatus(message, type = "") {
+      status.textContent = message;
+      status.className = type ? `status-${type}` : '';
+    }
+
+    // ✅ Clean up function
+    async function hangUp() {
+      updateStatus("Ending call...");
+      
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+      
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+      
+      if (callDoc) {
+        try {
+          await deleteDoc(callDoc);
+        } catch (error) {
+          console.log("Call document already deleted");
+        }
+        callDoc = null;
+      }
+      
+      localVideo.srcObject = null;
+      remoteVideo.srcObject = null;
+      updateStatus("Call ended. Ready to connect again.");
+      isCaller = false;
+    }
 
     // --- Create Call ---
     createBtn.onclick = async () => {
-      await initMedia();
+      try {
+        await initMedia();
+        pc = createPeerConnection();
+        isCaller = true;
 
-      const callDoc = doc(collection(db, "calls"));
-      const offerCandidates = collection(callDoc, "offerCandidates");
-      const answerCandidates = collection(callDoc, "answerCandidates");
+        callDoc = doc(collection(db, "calls"));
+        const offerCandidates = collection(callDoc, "offerCandidates");
+        const answerCandidates = collection(callDoc, "answerCandidates");
 
-      callIdInput.value = callDoc.id;
-      status.textContent = "Share this Call ID: " + callDoc.id;
+        callIdInput.value = callDoc.id;
+        updateStatus("Share this Call ID: " + callDoc.id, "connecting");
 
-      // Save offer ICE candidates
-      pc.onicecandidate = event => {
-        if (event.candidate) {
-          console.log("📡 New ICE candidate (offer):", event.candidate);
-          setDoc(doc(offerCandidates), event.candidate.toJSON());
-        }
-      };
+        // Save offer ICE candidates
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            console.log("📡 New ICE candidate (offer):", event.candidate);
+            await setDoc(doc(offerCandidates), event.candidate.toJSON());
+          }
+        };
 
-      const offerDescription = await pc.createOffer();
-      await pc.setLocalDescription(offerDescription);
+        // Create and set local offer
+        const offerDescription = await pc.createOffer();
+        await pc.setLocalDescription(offerDescription);
 
-      const offer = {
-        sdp: offerDescription.sdp,
-        type: offerDescription.type
-      };
-      await setDoc(callDoc, { offer });
+        const offer = {
+          sdp: offerDescription.sdp,
+          type: offerDescription.type,
+          createdAt: new Date()
+        };
+        await setDoc(callDoc, { offer });
 
-      // Listen for answer
-      onSnapshot(callDoc, snapshot => {
-        const data = snapshot.data();
-        if (!pc.currentRemoteDescription && data?.answer) {
-          console.log("📩 Received answer:", data.answer);
-          const answerDescription = new RTCSessionDescription(data.answer);
-          pc.setRemoteDescription(answerDescription);
-        }
-      });
+        // Listen for answer
+        onSnapshot(callDoc, async (snapshot) => {
+          const data = snapshot.data();
+          if (!data) return;
 
-      // Listen for remote ICE candidates (from the joiner)
-      onSnapshot(answerCandidates, snapshot => {
-        snapshot.docChanges().forEach(change => {
-          if (change.type === "added") {
-            const candidate = new RTCIceCandidate(change.doc.data());
-            console.log("🌍 Adding remote ICE candidate:", candidate);
-            pc.addIceCandidate(candidate);
+          if (data.answer && pc.signalingState !== "stable") {
+            console.log("📩 Received answer:", data.answer);
+            const answerDescription = new RTCSessionDescription(data.answer);
+            await pc.setRemoteDescription(answerDescription);
+          }
+
+          if (data.hangup) {
+            updateStatus("Partner left the call", "error");
+            hangUp();
           }
         });
-      });
+
+        // Listen for remote ICE candidates
+        onSnapshot(answerCandidates, (snapshot) => {
+          snapshot.docChanges().forEach(async (change) => {
+            if (change.type === "added") {
+              const candidate = new RTCIceCandidate(change.doc.data());
+              console.log("🌍 Adding remote ICE candidate:", candidate);
+              try {
+                await pc.addIceCandidate(candidate);
+              } catch (error) {
+                console.error("Error adding ICE candidate:", error);
+              }
+            }
+          });
+        });
+
+      } catch (error) {
+        console.error("Error creating call:", error);
+        updateStatus("Error creating call: " + error.message, "error");
+      }
     };
 
     // --- Join Call ---
     joinBtn.onclick = async () => {
-      await initMedia();
-
-      const callId = callIdInput.value.trim();
-      if (!callId) return alert("Enter a Call ID to join.");
-
-      const callDoc = doc(db, "calls", callId);
-      const offerCandidates = collection(callDoc, "offerCandidates");
-      const answerCandidates = collection(callDoc, "answerCandidates");
-
-      // Save joiner ICE candidates
-      pc.onicecandidate = event => {
-        if (event.candidate) {
-          console.log("📡 New ICE candidate (answer):", event.candidate);
-          setDoc(doc(answerCandidates), event.candidate.toJSON());
+      try {
+        const callId = callIdInput.value.trim();
+        if (!callId) {
+          alert("Please enter a Call ID to join.");
+          return;
         }
-      };
 
-      const callData = (await getDoc(callDoc)).data();
-      if (!callData?.offer) {
-        return alert("Invalid Call ID or call not found.");
-      }
+        await initMedia();
+        pc = createPeerConnection();
+        isCaller = false;
 
-      await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
+        callDoc = doc(db, "calls", callId);
+        const offerCandidates = collection(callDoc, "offerCandidates");
+        const answerCandidates = collection(callDoc, "answerCandidates");
 
-      const answerDescription = await pc.createAnswer();
-      await pc.setLocalDescription(answerDescription);
+        updateStatus("Joining call...", "connecting");
 
-      const answer = {
-        type: answerDescription.type,
-        sdp: answerDescription.sdp
-      };
-      await updateDoc(callDoc, { answer });
+        // Save answer ICE candidates
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            console.log("📡 New ICE candidate (answer):", event.candidate);
+            await setDoc(doc(answerCandidates), event.candidate.toJSON());
+          }
+        };
 
-      // Listen for remote ICE candidates (from caller)
-      onSnapshot(offerCandidates, snapshot => {
-        snapshot.docChanges().forEach(change => {
-          if (change.type === "added") {
-            const candidate = new RTCIceCandidate(change.doc.data());
-            console.log("🌍 Adding remote ICE candidate:", candidate);
-            pc.addIceCandidate(candidate);
+        // Get the offer and create answer
+        const callSnapshot = await getDoc(callDoc);
+        if (!callSnapshot.exists()) {
+          alert("Call not found. Please check the Call ID.");
+          return;
+        }
+
+        const callData = callSnapshot.data();
+        if (!callData?.offer) {
+          alert("Invalid call data.");
+          return;
+        }
+
+        await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
+
+        const answerDescription = await pc.createAnswer();
+        await pc.setLocalDescription(answerDescription);
+
+        const answer = {
+          type: answerDescription.type,
+          sdp: answerDescription.sdp,
+          answeredAt: new Date()
+        };
+        await updateDoc(callDoc, { answer });
+
+        // Listen for ICE candidates from caller
+        onSnapshot(offerCandidates, (snapshot) => {
+          snapshot.docChanges().forEach(async (change) => {
+            if (change.type === "added") {
+              const candidate = new RTCIceCandidate(change.doc.data());
+              console.log("🌍 Adding remote ICE candidate:", candidate);
+              try {
+                await pc.addIceCandidate(candidate);
+              } catch (error) {
+                console.error("Error adding ICE candidate:", error);
+              }
+            }
+          });
+        });
+
+        // Listen for hangup
+        onSnapshot(callDoc, (snapshot) => {
+          const data = snapshot.data();
+          if (data?.hangup) {
+            updateStatus("Partner left the call", "error");
+            hangUp();
           }
         });
-      });
 
-      status.textContent = "Joined call: " + callId;
+      } catch (error) {
+        console.error("Error joining call:", error);
+        updateStatus("Error joining call: " + error.message, "error");
+      }
     };
+
+    // --- Hang Up ---
+    hangupBtn.onclick = async () => {
+      if (callDoc && pc) {
+        try {
+          await updateDoc(callDoc, { hangup: true });
+        } catch (error) {
+          console.log("Error sending hangup signal:", error);
+        }
+      }
+      await hangUp();
+    };
+
+    // Clean up on page unload
+    window.addEventListener('beforeunload', hangUp);
   </script>
 </body>
 </html>
