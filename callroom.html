@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Call Room</title>
+  <style>
+    body { margin:0; background:#000; color:#fff; font-family:sans-serif; }
+    .top-bar { position:fixed; top:0; left:0; right:0; background:#111; padding:10px; text-align:center; font-size:16px; }
+    video { width:100%; max-height:50vh; object-fit:cover; }
+    #remoteVideo { transform: scaleX(-1); } /* mirror effect */
+    #controls { position:fixed; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:10px; }
+    #controls button { background:#222; color:white; padding:10px 20px; border:none; border-radius:25px; font-size:18px; }
+  </style>
+</head>
+<body>
+  <div class="top-bar" id="topBar">Connecting...</div>
+  <video id="remoteVideo" autoplay playsinline></video>
+  <video id="localVideo" autoplay playsinline muted></video>
+  <div id="controls">
+    <button id="toggleCam">🎥</button>
+    <button id="toggleMic">🎤</button>
+    <button id="endCall">❌</button>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyD9dwHPDTJr1-mFXPW_JZnVS-JyZ6BNMgU",
+      authDomain: "smart-waste-66279.firebaseapp.com",
+      projectId: "smart-waste-66279",
+      storageBucket: "smart-waste-66279.appspot.com",
+      messagingSenderId: "619099585646",
+      appId: "1:619099585646:web:b193d2a9fc13347d88ba7f"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const topBar = document.getElementById('topBar');
+    const toggleCam = document.getElementById('toggleCam');
+    const toggleMic = document.getElementById('toggleMic');
+    const endCall = document.getElementById('endCall');
+
+    const params = new URLSearchParams(window.location.search);
+    const calleeId = params.get('callee');
+    const callType = params.get('type');
+
+    let localStream, peerConnection;
+    const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+    async function init() {
+      topBar.textContent = `Calling ${calleeId} (${callType})...`;
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video: callType === 'video',
+        audio: true
+      });
+      localVideo.srcObject = localStream;
+
+      peerConnection = new RTCPeerConnection(servers);
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+      peerConnection.ontrack = event => {
+        remoteVideo.srcObject = event.streams[0];
+      };
+
+      const callDoc = db.collection('calls').doc();
+      const offerCandidates = callDoc.collection('offerCandidates');
+      const answerCandidates = callDoc.collection('answerCandidates');
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          offerCandidates.add(event.candidate.toJSON());
+        }
+      };
+
+      const offerDescription = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offerDescription);
+
+      const offer = { sdp: offerDescription.sdp, type: offerDescription.type, from: calleeId, callType };
+      await callDoc.set({ offer });
+
+      callDoc.onSnapshot(snapshot => {
+        const data = snapshot.data();
+        if (!peerConnection.currentRemoteDescription && data?.answer) {
+          const answerDescription = new RTCSessionDescription(data.answer);
+          peerConnection.setRemoteDescription(answerDescription);
+          topBar.textContent = `In Call with ${calleeId}`;
+        }
+      });
+
+      answerCandidates.onSnapshot(snapshot => {
+        snapshot.docChanges().forEach(change => {
+          if (change.type === 'added') {
+            const candidate = new RTCIceCandidate(change.doc.data());
+            peerConnection.addIceCandidate(candidate);
+          }
+        });
+      });
+
+      toggleCam.onclick = () => {
+        const videoTrack = localStream.getVideoTracks()[0];
+        if (videoTrack) {
+          videoTrack.enabled = !videoTrack.enabled;
+          toggleCam.textContent = videoTrack.enabled ? "🎥" : "🚫";
+        }
+      };
+      toggleMic.onclick = () => {
+        const audioTrack = localStream.getAudioTracks()[0];
+        audioTrack.enabled = !audioTrack.enabled;
+        toggleMic.textContent = audioTrack.enabled ? "🎤" : "🔇";
+      };
+      endCall.onclick = () => {
+        peerConnection.close();
+        window.close();
+      };
+    }
+
+    init();
+  </script>
+</body>
+</html>
