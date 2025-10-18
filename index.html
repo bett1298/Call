@@ -12,7 +12,9 @@
       margin: 0;
       padding: 20px;
     }
-    h1 { color: #ff4f87; }
+    h1 {
+      color: #ff4f87;
+    }
     .video-container {
       display: flex;
       justify-content: center;
@@ -27,7 +29,9 @@
       background: #000;
       border: 2px solid #ff4f87;
     }
-    .controls { margin: 20px 0; }
+    .controls {
+      margin: 20px 0;
+    }
     button {
       background: #ff4f87;
       color: white;
@@ -40,7 +44,13 @@
       font-weight: bold;
       transition: background 0.3s;
     }
-    button:hover { background: #e03e6d; }
+    button:hover {
+      background: #e03e6d;
+    }
+    button:disabled {
+      background: #cccccc;
+      cursor: not-allowed;
+    }
     input {
       padding: 12px;
       width: 250px;
@@ -56,14 +66,30 @@
       font-weight: bold;
       min-height: 24px;
     }
-    .status-connecting { background: #fffacd; color: #856404; }
-    .status-connected { background: #d4edda; color: #155724; }
-    .status-error { background: #f8d7da; color: #721c24; }
+    .status-connecting {
+      background: #fffacd;
+      color: #856404;
+    }
+    .status-connected {
+      background: #d4edda;
+      color: #155724;
+    }
+    .status-error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    .connection-info {
+      background: #e9ecef;
+      padding: 10px;
+      border-radius: 8px;
+      margin: 10px 0;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
   <h1>🎥 DateLink — Call Room</h1>
-
+  
   <div class="video-container">
     <div>
       <h3>You</h3>
@@ -73,6 +99,10 @@
       <h3>Partner</h3>
       <video id="remoteVideo" autoplay playsinline></video>
     </div>
+  </div>
+
+  <div class="connection-info" id="connectionInfo">
+    Connection: Checking...
   </div>
 
   <div class="controls">
@@ -104,22 +134,41 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // --- Add STUN + TURN (relay) servers ---
+    // ✅ Enhanced ICE servers with TURN for cross-network connectivity
     const servers = {
       iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
+        // Free STUN servers
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        
+        // Free TURN servers (these may have limits)
         {
-          urls: "turn:relay1.expressturn.com:3478",
-          username: "efree",
-          credential: "efree123"
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
         }
       ],
-      iceCandidatePoolSize: 10
+      iceCandidatePoolSize: 10,
+      iceTransportPolicy: 'all' // Try both relay and host candidates
     };
 
     let pc = null;
     let callDoc = null;
     let isCaller = false;
+    let iceConnectionCheck = null;
 
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
@@ -128,167 +177,400 @@
     const hangupBtn = document.getElementById('hangupBtn');
     const callIdInput = document.getElementById('callIdInput');
     const status = document.getElementById('status');
+    const connectionInfo = document.getElementById('connectionInfo');
 
     let localStream = null;
-    let remoteStream = new MediaStream();
+    let remoteStream = null;
 
+    // ✅ Initialize media with better error handling
     async function initMedia() {
       try {
-        if (!localStream) {
-          localStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 1280, height: 720 },
-            audio: true
-          });
-          localVideo.srcObject = localStream;
-          console.log("✅ Local media ready");
+        if (localStream) {
+          localStream.getTracks().forEach(track => track.stop());
         }
+        
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 }
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+        
+        localVideo.srcObject = localStream;
+        console.log("✅ Local media ready");
+        return localStream;
       } catch (err) {
-        updateStatus("❌ Please allow camera & microphone access.", "error");
+        console.error("Media access error:", err);
+        updateStatus("Error: Please allow camera and microphone access.", "error");
         throw err;
       }
     }
 
+    // ✅ Create new peer connection with enhanced settings
     function createPeerConnection() {
       const newPC = new RTCPeerConnection(servers);
-
-      localStream.getTracks().forEach(track => newPC.addTrack(track, localStream));
-      newPC.ontrack = event => {
-        event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
-        remoteVideo.srcObject = remoteStream;
-        updateStatus("Connected! 🎉", "connected");
-      };
-
-      newPC.oniceconnectionstatechange = () => {
-        console.log("ICE State:", newPC.iceConnectionState);
-        if (newPC.iceConnectionState === "disconnected" || newPC.iceConnectionState === "failed") {
-          updateStatus("⚠️ Connection lost.", "error");
+      
+      // Enhanced connection state monitoring
+      newPC.onconnectionstatechange = () => {
+        const state = newPC.connectionState;
+        console.log("Connection state:", state);
+        updateConnectionInfo(state);
+        
+        switch(state) {
+          case "connected":
+            updateStatus("Connected! You can see each other now.", "connected");
+            break;
+          case "disconnected":
+            updateStatus("Connection unstable - trying to reconnect...", "connecting");
+            break;
+          case "failed":
+            updateStatus("Connection failed - please try again", "error");
+            setTimeout(() => {
+              if (newPC.connectionState === 'failed') {
+                hangUp();
+              }
+            }, 2000);
+            break;
+          case "connecting":
+            updateStatus("Connecting... This may take a moment", "connecting");
+            break;
         }
       };
+
+      // ICE connection state
+      newPC.oniceconnectionstatechange = () => {
+        const iceState = newPC.iceConnectionState;
+        console.log("ICE connection state:", iceState);
+        
+        if (iceState === 'failed') {
+          console.log("ICE failed, may need TURN server");
+        }
+      };
+
+      // ICE gathering state
+      newPC.onicegatheringstatechange = () => {
+        console.log("ICE gathering state:", newPC.iceGatheringState);
+      };
+
+      // Handle remote stream
+      newPC.ontrack = event => {
+        console.log("🎥 Received remote tracks:", event.streams);
+        if (event.streams && event.streams[0]) {
+          remoteStream = event.streams[0];
+          remoteVideo.srcObject = remoteStream;
+          
+          // Listen for when remote video starts playing
+          remoteVideo.onloadedmetadata = () => {
+            console.log("Remote video metadata loaded");
+          };
+          
+          remoteVideo.onplay = () => {
+            console.log("Remote video started playing");
+            updateStatus("Connected! Video is streaming.", "connected");
+          };
+        }
+      };
+
+      // ICE candidate logging
+      newPC.onicecandidate = (event) => {
+        if (event.candidate) {
+          const candidate = event.candidate;
+          console.log("ICE candidate type:", candidate.type);
+          console.log("ICE candidate protocol:", candidate.protocol);
+          console.log("ICE candidate address:", candidate.address);
+        } else {
+          console.log("ICE gathering complete");
+        }
+      };
+
+      // Add local tracks
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          newPC.addTrack(track, localStream);
+          console.log(`Added local track: ${track.kind}`);
+        });
+      }
 
       return newPC;
     }
 
+    // ✅ Update connection info display
+    function updateConnectionInfo(state) {
+      connectionInfo.textContent = `Connection: ${state}`;
+      connectionInfo.className = `connection-info ${
+        state === 'connected' ? 'status-connected' : 
+        state === 'connecting' ? 'status-connecting' : 
+        'status-error'
+      }`;
+    }
+
+    // ✅ Update status
     function updateStatus(message, type = "") {
       status.textContent = message;
       status.className = type ? `status-${type}` : '';
     }
 
+    // ✅ Clean up function
     async function hangUp() {
       updateStatus("Ending call...");
+      updateConnectionInfo("disconnected");
+      
+      if (iceConnectionCheck) {
+        clearTimeout(iceConnectionCheck);
+        iceConnectionCheck = null;
+      }
+      
       if (pc) {
         pc.close();
         pc = null;
       }
+      
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
       }
+      
       if (callDoc) {
-        try { await deleteDoc(callDoc); } catch (e) {}
+        try {
+          await deleteDoc(callDoc);
+        } catch (error) {
+          console.log("Call document already deleted");
+        }
         callDoc = null;
       }
+      
       localVideo.srcObject = null;
       remoteVideo.srcObject = null;
-      updateStatus("Call ended. Ready again.");
+      updateStatus("Call ended. Ready to connect again.");
+      isCaller = false;
+    }
+
+    // ✅ Wait for ICE gathering to complete
+    function waitForICEGathering(pc, timeout = 10000) {
+      return new Promise((resolve, reject) => {
+        if (pc.iceGatheringState === 'complete') {
+          resolve();
+          return;
+        }
+        
+        const checkInterval = setInterval(() => {
+          if (pc.iceGatheringState === 'complete') {
+            clearInterval(checkInterval);
+            clearTimeout(timeoutId);
+            resolve();
+          }
+        }, 100);
+        
+        const timeoutId = setTimeout(() => {
+          clearInterval(checkInterval);
+          console.warn("ICE gathering timeout - proceeding anyway");
+          resolve(); // Continue even if ICE gathering times out
+        }, timeout);
+      });
     }
 
     // --- Create Call ---
     createBtn.onclick = async () => {
-      await initMedia();
-      pc = createPeerConnection();
-      isCaller = true;
+      try {
+        await initMedia();
+        pc = createPeerConnection();
+        isCaller = true;
 
-      callDoc = doc(collection(db, "calls"));
-      const offerCandidates = collection(callDoc, "offerCandidates");
-      const answerCandidates = collection(callDoc, "answerCandidates");
-      callIdInput.value = callDoc.id;
+        callDoc = doc(collection(db, "calls"));
+        const offerCandidates = collection(callDoc, "offerCandidates");
+        const answerCandidates = collection(callDoc, "answerCandidates");
 
-      updateStatus("Share this Call ID: " + callDoc.id, "connecting");
+        callIdInput.value = callDoc.id;
+        updateStatus("Creating call... Share this ID: " + callDoc.id, "connecting");
 
-      pc.onicecandidate = async event => {
-        if (event.candidate) {
-          await setDoc(doc(offerCandidates), event.candidate.toJSON());
-        }
-      };
+        // Save offer ICE candidates
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            try {
+              await setDoc(doc(offerCandidates), event.candidate.toJSON());
+            } catch (error) {
+              console.error("Error saving ICE candidate:", error);
+            }
+          }
+        };
 
-      const offerDescription = await pc.createOffer();
-      await pc.setLocalDescription(offerDescription);
+        // Create and set local offer
+        const offerDescription = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
+        await pc.setLocalDescription(offerDescription);
 
-      const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
-      await setDoc(callDoc, { offer });
+        // Wait for ICE candidates to be gathered
+        await waitForICEGathering(pc);
 
-      onSnapshot(callDoc, async snapshot => {
-        const data = snapshot.data();
-        if (!pc.currentRemoteDescription && data?.answer) {
-          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-        }
-        if (data?.hangup) hangUp();
-      });
+        const offer = {
+          sdp: pc.localDescription.sdp,
+          type: pc.localDescription.type,
+          createdAt: new Date()
+        };
+        await setDoc(callDoc, { offer });
 
-      onSnapshot(answerCandidates, snapshot => {
-        snapshot.docChanges().forEach(change => {
-          if (change.type === "added") {
-            const candidate = new RTCIceCandidate(change.doc.data());
-            pc.addIceCandidate(candidate).catch(console.error);
+        console.log("✅ Offer created and saved");
+
+        // Listen for answer
+        onSnapshot(callDoc, async (snapshot) => {
+          const data = snapshot.data();
+          if (!data) return;
+
+          if (data.answer && pc.signalingState === "have-local-offer") {
+            console.log("📩 Received answer");
+            const answerDescription = new RTCSessionDescription(data.answer);
+            await pc.setRemoteDescription(answerDescription);
+          }
+
+          if (data.hangup) {
+            updateStatus("Partner left the call", "error");
+            hangUp();
           }
         });
-      });
+
+        // Listen for remote ICE candidates
+        onSnapshot(answerCandidates, (snapshot) => {
+          snapshot.docChanges().forEach(async (change) => {
+            if (change.type === "added") {
+              const candidateData = change.doc.data();
+              if (pc.remoteDescription) {
+                const candidate = new RTCIceCandidate(candidateData);
+                try {
+                  await pc.addIceCandidate(candidate);
+                  console.log("✅ Added remote ICE candidate");
+                } catch (error) {
+                  console.error("Error adding ICE candidate:", error);
+                }
+              }
+            }
+          });
+        });
+
+      } catch (error) {
+        console.error("Error creating call:", error);
+        updateStatus("Error creating call: " + error.message, "error");
+      }
     };
 
     // --- Join Call ---
     joinBtn.onclick = async () => {
-      const callId = callIdInput.value.trim();
-      if (!callId) return alert("Enter a Call ID first.");
-
-      await initMedia();
-      pc = createPeerConnection();
-      isCaller = false;
-
-      callDoc = doc(db, "calls", callId);
-      const offerCandidates = collection(callDoc, "offerCandidates");
-      const answerCandidates = collection(callDoc, "answerCandidates");
-
-      updateStatus("Joining call...", "connecting");
-
-      pc.onicecandidate = async event => {
-        if (event.candidate) {
-          await setDoc(doc(answerCandidates), event.candidate.toJSON());
+      try {
+        const callId = callIdInput.value.trim();
+        if (!callId) {
+          alert("Please enter a Call ID to join.");
+          return;
         }
-      };
 
-      const callSnapshot = await getDoc(callDoc);
-      if (!callSnapshot.exists()) return alert("❌ Call not found.");
+        await initMedia();
+        pc = createPeerConnection();
+        isCaller = false;
 
-      const callData = callSnapshot.data();
-      await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
+        callDoc = doc(db, "calls", callId);
+        const offerCandidates = collection(callDoc, "offerCandidates");
+        const answerCandidates = collection(callDoc, "answerCandidates");
 
-      const answerDescription = await pc.createAnswer();
-      await pc.setLocalDescription(answerDescription);
+        updateStatus("Joining call...", "connecting");
 
-      const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
-      await updateDoc(callDoc, { answer });
+        // Save answer ICE candidates
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            try {
+              await setDoc(doc(answerCandidates), event.candidate.toJSON());
+            } catch (error) {
+              console.error("Error saving ICE candidate:", error);
+            }
+          }
+        };
 
-      onSnapshot(offerCandidates, snapshot => {
-        snapshot.docChanges().forEach(change => {
-          if (change.type === "added") {
-            const candidate = new RTCIceCandidate(change.doc.data());
-            pc.addIceCandidate(candidate).catch(console.error);
+        // Get the offer and create answer
+        const callSnapshot = await getDoc(callDoc);
+        if (!callSnapshot.exists()) {
+          alert("Call not found. Please check the Call ID.");
+          return;
+        }
+
+        const callData = callSnapshot.data();
+        if (!callData?.offer) {
+          alert("Invalid call data.");
+          return;
+        }
+
+        console.log("Setting remote description...");
+        await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
+
+        const answerDescription = await pc.createAnswer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
+        await pc.setLocalDescription(answerDescription);
+
+        // Wait for ICE candidates to be gathered
+        await waitForICEGathering(pc);
+
+        const answer = {
+          type: pc.localDescription.type,
+          sdp: pc.localDescription.sdp,
+          answeredAt: new Date()
+        };
+        await updateDoc(callDoc, { answer });
+
+        console.log("✅ Answer created and sent");
+
+        // Listen for ICE candidates from caller
+        onSnapshot(offerCandidates, (snapshot) => {
+          snapshot.docChanges().forEach(async (change) => {
+            if (change.type === "added") {
+              const candidateData = change.doc.data();
+              if (pc.remoteDescription) {
+                const candidate = new RTCIceCandidate(candidateData);
+                try {
+                  await pc.addIceCandidate(candidate);
+                  console.log("✅ Added remote ICE candidate");
+                } catch (error) {
+                  console.error("Error adding ICE candidate:", error);
+                }
+              }
+            }
+          });
+        });
+
+        // Listen for hangup
+        onSnapshot(callDoc, (snapshot) => {
+          const data = snapshot.data();
+          if (data?.hangup) {
+            updateStatus("Partner left the call", "error");
+            hangUp();
           }
         });
-      });
 
-      onSnapshot(callDoc, snapshot => {
-        const data = snapshot.data();
-        if (data?.hangup) hangUp();
-      });
+      } catch (error) {
+        console.error("Error joining call:", error);
+        updateStatus("Error joining call: " + error.message, "error");
+      }
     };
 
+    // --- Hang Up ---
     hangupBtn.onclick = async () => {
-      if (callDoc) await updateDoc(callDoc, { hangup: true });
+      if (callDoc && pc) {
+        try {
+          await updateDoc(callDoc, { hangup: true });
+        } catch (error) {
+          console.log("Error sending hangup signal:", error);
+        }
+      }
       await hangUp();
     };
 
-    window.addEventListener("beforeunload", hangUp);
+    // Clean up on page unload
+    window.addEventListener('beforeunload', hangUp);
   </script>
 </body>
 </html>
