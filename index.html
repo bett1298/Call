@@ -12,9 +12,7 @@
       margin: 0;
       padding: 20px;
     }
-    h1 {
-      color: #ff4f87;
-    }
+    h1 { color: #ff4f87; }
     .video-container {
       display: flex;
       justify-content: center;
@@ -29,9 +27,7 @@
       background: #000;
       border: 2px solid #ff4f87;
     }
-    .controls {
-      margin: 20px 0;
-    }
+    .controls { margin: 20px 0; }
     button {
       background: #ff4f87;
       color: white;
@@ -44,13 +40,7 @@
       font-weight: bold;
       transition: background 0.3s;
     }
-    button:hover {
-      background: #e03e6d;
-    }
-    button:disabled {
-      background: #cccccc;
-      cursor: not-allowed;
-    }
+    button:hover { background: #e03e6d; }
     input {
       padding: 12px;
       width: 250px;
@@ -66,23 +56,14 @@
       font-weight: bold;
       min-height: 24px;
     }
-    .status-connecting {
-      background: #fffacd;
-      color: #856404;
-    }
-    .status-connected {
-      background: #d4edda;
-      color: #155724;
-    }
-    .status-error {
-      background: #f8d7da;
-      color: #721c24;
-    }
+    .status-connecting { background: #fffacd; color: #856404; }
+    .status-connected { background: #d4edda; color: #155724; }
+    .status-error { background: #f8d7da; color: #721c24; }
   </style>
 </head>
 <body>
   <h1>🎥 DateLink — Call Room</h1>
-  
+
   <div class="video-container">
     <div>
       <h3>You</h3>
@@ -122,17 +103,19 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-const servers = {
-  iceServers: [
-    { urls: ['stun:stun.l.google.com:19302'] },
-    {
-      urls: 'turn:relay1.expressturn.com:3478',
-      username: 'efree',
-      credential: 'efreepass'
-    }
-  ]
-};
-    
+
+    // --- Add STUN + TURN (relay) servers ---
+    const servers = {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        {
+          urls: "turn:relay1.expressturn.com:3478",
+          username: "efree",
+          credential: "efree123"
+        }
+      ],
+      iceCandidatePoolSize: 10
+    };
 
     let pc = null;
     let callDoc = null;
@@ -147,276 +130,165 @@ const servers = {
     const status = document.getElementById('status');
 
     let localStream = null;
-    let remoteStream = null;
+    let remoteStream = new MediaStream();
 
-    // ✅ Initialize media
     async function initMedia() {
       try {
-        if (localStream) {
-          return localStream;
+        if (!localStream) {
+          localStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 1280, height: 720 },
+            audio: true
+          });
+          localVideo.srcObject = localStream;
+          console.log("✅ Local media ready");
         }
-        
-        localStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: 1280, height: 720 },
-          audio: true 
-        });
-        localVideo.srcObject = localStream;
-        console.log("✅ Local media ready");
-        return localStream;
       } catch (err) {
-        console.error("Media access error:", err);
-        updateStatus("Error: Please allow camera and microphone access.", "error");
+        updateStatus("❌ Please allow camera & microphone access.", "error");
         throw err;
       }
     }
 
-    // ✅ Create new peer connection
     function createPeerConnection() {
       const newPC = new RTCPeerConnection(servers);
-      
-      // Add local tracks
-      if (localStream) {
-        localStream.getTracks().forEach(track => {
-          newPC.addTrack(track, localStream);
-        });
-      }
 
-      // Handle remote stream
+      localStream.getTracks().forEach(track => newPC.addTrack(track, localStream));
       newPC.ontrack = event => {
-        console.log("🎥 Received remote tracks:", event.streams);
-        if (event.streams && event.streams[0]) {
-          remoteStream = event.streams[0];
-          remoteVideo.srcObject = remoteStream;
-          updateStatus("Connected! You can see each other now.", "connected");
-        }
-      };
-
-      // Connection state handling
-      newPC.onconnectionstatechange = () => {
-        console.log("Connection state:", newPC.connectionState);
-        switch(newPC.connectionState) {
-          case "connected":
-            updateStatus("Connected!", "connected");
-            break;
-          case "disconnected":
-          case "failed":
-            updateStatus("Connection lost", "error");
-            break;
-          case "connecting":
-            updateStatus("Connecting...", "connecting");
-            break;
-        }
+        event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
+        remoteVideo.srcObject = remoteStream;
+        updateStatus("Connected! 🎉", "connected");
       };
 
       newPC.oniceconnectionstatechange = () => {
-        console.log("ICE connection state:", newPC.iceConnectionState);
+        console.log("ICE State:", newPC.iceConnectionState);
+        if (newPC.iceConnectionState === "disconnected" || newPC.iceConnectionState === "failed") {
+          updateStatus("⚠️ Connection lost.", "error");
+        }
       };
 
       return newPC;
     }
 
-    // ✅ Update status
     function updateStatus(message, type = "") {
       status.textContent = message;
       status.className = type ? `status-${type}` : '';
     }
 
-    // ✅ Clean up function
     async function hangUp() {
       updateStatus("Ending call...");
-      
       if (pc) {
         pc.close();
         pc = null;
       }
-      
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
       }
-      
       if (callDoc) {
-        try {
-          await deleteDoc(callDoc);
-        } catch (error) {
-          console.log("Call document already deleted");
-        }
+        try { await deleteDoc(callDoc); } catch (e) {}
         callDoc = null;
       }
-      
       localVideo.srcObject = null;
       remoteVideo.srcObject = null;
-      updateStatus("Call ended. Ready to connect again.");
-      isCaller = false;
+      updateStatus("Call ended. Ready again.");
     }
 
     // --- Create Call ---
     createBtn.onclick = async () => {
-      try {
-        await initMedia();
-        pc = createPeerConnection();
-        isCaller = true;
+      await initMedia();
+      pc = createPeerConnection();
+      isCaller = true;
 
-        callDoc = doc(collection(db, "calls"));
-        const offerCandidates = collection(callDoc, "offerCandidates");
-        const answerCandidates = collection(callDoc, "answerCandidates");
+      callDoc = doc(collection(db, "calls"));
+      const offerCandidates = collection(callDoc, "offerCandidates");
+      const answerCandidates = collection(callDoc, "answerCandidates");
+      callIdInput.value = callDoc.id;
 
-        callIdInput.value = callDoc.id;
-        updateStatus("Share this Call ID: " + callDoc.id, "connecting");
+      updateStatus("Share this Call ID: " + callDoc.id, "connecting");
 
-        // Save offer ICE candidates
-        pc.onicecandidate = async (event) => {
-          if (event.candidate) {
-            console.log("📡 New ICE candidate (offer):", event.candidate);
-            await setDoc(doc(offerCandidates), event.candidate.toJSON());
-          }
-        };
+      pc.onicecandidate = async event => {
+        if (event.candidate) {
+          await setDoc(doc(offerCandidates), event.candidate.toJSON());
+        }
+      };
 
-        // Create and set local offer
-        const offerDescription = await pc.createOffer();
-        await pc.setLocalDescription(offerDescription);
+      const offerDescription = await pc.createOffer();
+      await pc.setLocalDescription(offerDescription);
 
-        const offer = {
-          sdp: offerDescription.sdp,
-          type: offerDescription.type,
-          createdAt: new Date()
-        };
-        await setDoc(callDoc, { offer });
+      const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
+      await setDoc(callDoc, { offer });
 
-        // Listen for answer
-        onSnapshot(callDoc, async (snapshot) => {
-          const data = snapshot.data();
-          if (!data) return;
+      onSnapshot(callDoc, async snapshot => {
+        const data = snapshot.data();
+        if (!pc.currentRemoteDescription && data?.answer) {
+          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+        }
+        if (data?.hangup) hangUp();
+      });
 
-          if (data.answer && pc.signalingState !== "stable") {
-            console.log("📩 Received answer:", data.answer);
-            const answerDescription = new RTCSessionDescription(data.answer);
-            await pc.setRemoteDescription(answerDescription);
-          }
-
-          if (data.hangup) {
-            updateStatus("Partner left the call", "error");
-            hangUp();
+      onSnapshot(answerCandidates, snapshot => {
+        snapshot.docChanges().forEach(change => {
+          if (change.type === "added") {
+            const candidate = new RTCIceCandidate(change.doc.data());
+            pc.addIceCandidate(candidate).catch(console.error);
           }
         });
-
-        // Listen for remote ICE candidates
-        onSnapshot(answerCandidates, (snapshot) => {
-          snapshot.docChanges().forEach(async (change) => {
-            if (change.type === "added") {
-              const candidate = new RTCIceCandidate(change.doc.data());
-              console.log("🌍 Adding remote ICE candidate:", candidate);
-              try {
-                await pc.addIceCandidate(candidate);
-              } catch (error) {
-                console.error("Error adding ICE candidate:", error);
-              }
-            }
-          });
-        });
-
-      } catch (error) {
-        console.error("Error creating call:", error);
-        updateStatus("Error creating call: " + error.message, "error");
-      }
+      });
     };
 
     // --- Join Call ---
     joinBtn.onclick = async () => {
-      try {
-        const callId = callIdInput.value.trim();
-        if (!callId) {
-          alert("Please enter a Call ID to join.");
-          return;
+      const callId = callIdInput.value.trim();
+      if (!callId) return alert("Enter a Call ID first.");
+
+      await initMedia();
+      pc = createPeerConnection();
+      isCaller = false;
+
+      callDoc = doc(db, "calls", callId);
+      const offerCandidates = collection(callDoc, "offerCandidates");
+      const answerCandidates = collection(callDoc, "answerCandidates");
+
+      updateStatus("Joining call...", "connecting");
+
+      pc.onicecandidate = async event => {
+        if (event.candidate) {
+          await setDoc(doc(answerCandidates), event.candidate.toJSON());
         }
+      };
 
-        await initMedia();
-        pc = createPeerConnection();
-        isCaller = false;
+      const callSnapshot = await getDoc(callDoc);
+      if (!callSnapshot.exists()) return alert("❌ Call not found.");
 
-        callDoc = doc(db, "calls", callId);
-        const offerCandidates = collection(callDoc, "offerCandidates");
-        const answerCandidates = collection(callDoc, "answerCandidates");
+      const callData = callSnapshot.data();
+      await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
 
-        updateStatus("Joining call...", "connecting");
+      const answerDescription = await pc.createAnswer();
+      await pc.setLocalDescription(answerDescription);
 
-        // Save answer ICE candidates
-        pc.onicecandidate = async (event) => {
-          if (event.candidate) {
-            console.log("📡 New ICE candidate (answer):", event.candidate);
-            await setDoc(doc(answerCandidates), event.candidate.toJSON());
-          }
-        };
+      const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
+      await updateDoc(callDoc, { answer });
 
-        // Get the offer and create answer
-        const callSnapshot = await getDoc(callDoc);
-        if (!callSnapshot.exists()) {
-          alert("Call not found. Please check the Call ID.");
-          return;
-        }
-
-        const callData = callSnapshot.data();
-        if (!callData?.offer) {
-          alert("Invalid call data.");
-          return;
-        }
-
-        await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
-
-        const answerDescription = await pc.createAnswer();
-        await pc.setLocalDescription(answerDescription);
-
-        const answer = {
-          type: answerDescription.type,
-          sdp: answerDescription.sdp,
-          answeredAt: new Date()
-        };
-        await updateDoc(callDoc, { answer });
-
-        // Listen for ICE candidates from caller
-        onSnapshot(offerCandidates, (snapshot) => {
-          snapshot.docChanges().forEach(async (change) => {
-            if (change.type === "added") {
-              const candidate = new RTCIceCandidate(change.doc.data());
-              console.log("🌍 Adding remote ICE candidate:", candidate);
-              try {
-                await pc.addIceCandidate(candidate);
-              } catch (error) {
-                console.error("Error adding ICE candidate:", error);
-              }
-            }
-          });
-        });
-
-        // Listen for hangup
-        onSnapshot(callDoc, (snapshot) => {
-          const data = snapshot.data();
-          if (data?.hangup) {
-            updateStatus("Partner left the call", "error");
-            hangUp();
+      onSnapshot(offerCandidates, snapshot => {
+        snapshot.docChanges().forEach(change => {
+          if (change.type === "added") {
+            const candidate = new RTCIceCandidate(change.doc.data());
+            pc.addIceCandidate(candidate).catch(console.error);
           }
         });
+      });
 
-      } catch (error) {
-        console.error("Error joining call:", error);
-        updateStatus("Error joining call: " + error.message, "error");
-      }
+      onSnapshot(callDoc, snapshot => {
+        const data = snapshot.data();
+        if (data?.hangup) hangUp();
+      });
     };
 
-    // --- Hang Up ---
     hangupBtn.onclick = async () => {
-      if (callDoc && pc) {
-        try {
-          await updateDoc(callDoc, { hangup: true });
-        } catch (error) {
-          console.log("Error sending hangup signal:", error);
-        }
-      }
+      if (callDoc) await updateDoc(callDoc, { hangup: true });
       await hangUp();
     };
 
-    // Clean up on page unload
-    window.addEventListener('beforeunload', hangUp);
+    window.addEventListener("beforeunload", hangUp);
   </script>
 </body>
 </html>
