@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>DateLink — Login & Signup</title>
+<style>
+  body {
+    font-family:'Poppins',sans-serif;
+    margin:0;
+    background:linear-gradient(135deg,#ff4f87,#ff8eb1);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+  }
+  .auth-container {
+    background:white;
+    width:340px;
+    padding:25px;
+    border-radius:15px;
+    box-shadow:0 5px 15px rgba(0,0,0,.15);
+    text-align:center;
+    transition:.4s;
+  }
+  h2 { color:#ff4f87;margin-bottom:20px; }
+  input {
+    width:100%;
+    padding:10px;
+    margin:8px 0;
+    border:1px solid #ddd;
+    border-radius:8px;
+    font-family:inherit;
+  }
+  button {
+    width:100%;
+    padding:10px;
+    background:#ff4f87;
+    color:white;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+    font-weight:600;
+  }
+  button:hover { background:#ff2f6d; }
+  .toggle { margin-top:15px;color:#666; }
+  .toggle span {
+    color:#ff4f87;
+    cursor:pointer;
+    font-weight:600;
+  }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+
+<div class="auth-container">
+  <h2 id="formTitle">Login</h2>
+
+  <!-- Login Form -->
+  <div id="loginForm">
+    <input type="email" id="loginEmail" placeholder="Email">
+    <input type="password" id="loginPassword" placeholder="Password">
+    <button id="loginBtn">Login</button>
+  </div>
+
+  <!-- Signup Form -->
+  <div id="signupForm" class="hidden">
+    <input type="text" id="signupName" placeholder="Full Name">
+    <input type="email" id="signupEmail" placeholder="Email">
+    <input type="password" id="signupPassword" placeholder="Password">
+    <button id="signupBtn">Sign Up</button>
+  </div>
+
+  <p class="toggle" id="toggleText">
+    Don't have an account? <span id="toggleLink">Sign Up</span>
+  </p>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyD9dwHPDTJr1-mFXPW_JZnVS-JyZ6BNMgU",
+  authDomain: "smart-waste-66279.firebaseapp.com",
+  projectId: "smart-waste-66279",
+  storageBucket: "smart-waste-66279.appspot.com",
+  messagingSenderId: "619099585646",
+  appId: "1:619099585646:web:b193d2a9fc13347d88ba7f"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const formTitle = document.getElementById('formTitle');
+const loginForm = document.getElementById('loginForm');
+const signupForm = document.getElementById('signupForm');
+const toggleLink = document.getElementById('toggleLink');
+const toggleText = document.getElementById('toggleText');
+
+let isLogin = true;
+function toggleForms() {
+  isLogin = !isLogin;
+  if (isLogin) {
+    formTitle.textContent = 'Login';
+    loginForm.classList.remove('hidden');
+    signupForm.classList.add('hidden');
+    toggleText.innerHTML = `Don't have an account? <span id="toggleLink">Sign Up</span>`;
+  } else {
+    formTitle.textContent = 'Sign Up';
+    loginForm.classList.add('hidden');
+    signupForm.classList.remove('hidden');
+    toggleText.innerHTML = `Already have an account? <span id="toggleLink">Login</span>`;
+  }
+  document.getElementById('toggleLink').addEventListener('click', toggleForms);
+}
+toggleLink.addEventListener('click', toggleForms);
+
+// ----- Login -----
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  if (!email || !password) return alert('Enter both fields!');
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+    localStorage.setItem('loggedIn', 'true');
+    window.location.href = 'home2.html'; // redirect only after successful login
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+// ----- Sign Up -----
+document.getElementById('signupBtn').addEventListener('click', async () => {
+  const name = document.getElementById('signupName').value.trim();
+  const email = document.getElementById('signupEmail').value.trim();
+  const password = document.getElementById('signupPassword').value.trim();
+  if (!name || !email || !password) return alert('Fill all fields!');
+  try {
+    const cred = await auth.createUserWithEmailAndPassword(email, password);
+    const uid = cred.user.uid;
+    await db.collection('users').doc(uid).set({
+      fullName: name,
+      email,
+      bio: '',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    localStorage.setItem('loggedIn', 'true');
+    window.location.href = 'home2.html';
+  } catch (err) {
+    alert(err.message);
+  }
+});
+</script>
+</body>
+</html>
