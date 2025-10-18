@@ -122,13 +122,17 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-
-    const servers = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
-    };
+const servers = {
+  iceServers: [
+    { urls: ['stun:stun.l.google.com:19302'] },
+    {
+      urls: 'turn:relay1.expressturn.com:3478',
+      username: 'efree',
+      credential: 'efreepass'
+    }
+  ]
+};
+    
 
     let pc = null;
     let callDoc = null;
