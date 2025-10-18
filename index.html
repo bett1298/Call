@@ -94,36 +94,48 @@
     let remoteStream = new MediaStream();
     remoteVideo.srcObject = remoteStream;
 
-    // ✅ Get camera and microphone
+    // ✅ Get local media
     async function initMedia() {
       try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
         localVideo.srcObject = localStream;
-        console.log("Media stream ready");
+
+        // Add each track to the peer connection
+        localStream.getTracks().forEach(track => {
+          pc.addTrack(track, localStream);
+        });
+
+        console.log("✅ Local media ready");
       } catch (err) {
         console.error("Media access error:", err);
         alert("Please allow camera and microphone access.");
       }
     }
 
-    // ✅ Handle remote video
+    // ✅ Receive remote stream
     pc.ontrack = event => {
+      console.log("🎥 Received remote track:", event.streams[0]);
       event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
     };
+
+    // ✅ Connection state logs
+    pc.onconnectionstatechange = () => console.log("Connection state:", pc.connectionState);
 
     // --- Create Call ---
     createBtn.onclick = async () => {
       await initMedia();
+
       const callDoc = doc(collection(db, "calls"));
       const offerCandidates = collection(callDoc, "offerCandidates");
       const answerCandidates = collection(callDoc, "answerCandidates");
 
       callIdInput.value = callDoc.id;
-      status.textContent = "Call ID created: " + callDoc.id;
+      status.textContent = "Share this Call ID: " + callDoc.id;
 
+      // Save offer ICE candidates
       pc.onicecandidate = event => {
         if (event.candidate) {
+          console.log("📡 New ICE candidate (offer):", event.candidate);
           setDoc(doc(offerCandidates), event.candidate.toJSON());
         }
       };
@@ -137,18 +149,22 @@
       };
       await setDoc(callDoc, { offer });
 
+      // Listen for answer
       onSnapshot(callDoc, snapshot => {
         const data = snapshot.data();
         if (!pc.currentRemoteDescription && data?.answer) {
+          console.log("📩 Received answer:", data.answer);
           const answerDescription = new RTCSessionDescription(data.answer);
           pc.setRemoteDescription(answerDescription);
         }
       });
 
+      // Listen for remote ICE candidates (from the joiner)
       onSnapshot(answerCandidates, snapshot => {
         snapshot.docChanges().forEach(change => {
           if (change.type === "added") {
             const candidate = new RTCIceCandidate(change.doc.data());
+            console.log("🌍 Adding remote ICE candidate:", candidate);
             pc.addIceCandidate(candidate);
           }
         });
@@ -166,8 +182,10 @@
       const offerCandidates = collection(callDoc, "offerCandidates");
       const answerCandidates = collection(callDoc, "answerCandidates");
 
+      // Save joiner ICE candidates
       pc.onicecandidate = event => {
         if (event.candidate) {
+          console.log("📡 New ICE candidate (answer):", event.candidate);
           setDoc(doc(answerCandidates), event.candidate.toJSON());
         }
       };
@@ -188,10 +206,12 @@
       };
       await updateDoc(callDoc, { answer });
 
+      // Listen for remote ICE candidates (from caller)
       onSnapshot(offerCandidates, snapshot => {
         snapshot.docChanges().forEach(change => {
           if (change.type === "added") {
             const candidate = new RTCIceCandidate(change.doc.data());
+            console.log("🌍 Adding remote ICE candidate:", candidate);
             pc.addIceCandidate(candidate);
           }
         });
