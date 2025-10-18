@@ -1,30 +1,94 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Call Room</title>
   <style>
-    body { margin:0; background:#000; color:#fff; font-family:sans-serif; }
-    .top-bar { position:fixed; top:0; left:0; right:0; background:#111; padding:10px; text-align:center; font-size:16px; }
-    video { width:100%; max-height:50vh; object-fit:cover; }
-    #remoteVideo { transform: scaleX(-1); } /* mirror effect */
-    #controls { position:fixed; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:10px; }
-    #controls button { background:#222; color:white; padding:10px 20px; border:none; border-radius:25px; font-size:18px; }
+    body {
+      margin: 0;
+      background: #000;
+      font-family: 'Poppins', sans-serif;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .top-bar {
+      padding: 10px 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0,0,0,0.5);
+    }
+    .top-bar h3 {
+      margin: 0;
+      font-size: 16px;
+    }
+    video {
+      width: 100%;
+      height: calc(100vh - 60px);
+      object-fit: cover;
+      background: #111;
+    }
+    #remoteVideo {
+      display: none;
+    }
+    .controls {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 20px;
+    }
+    .controls button {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border: none;
+      padding: 12px 16px;
+      border-radius: 50%;
+      font-size: 20px;
+      cursor: pointer;
+    }
+    .controls button.end {
+      background: #e53935;
+    }
+    .mini {
+      position: absolute;
+      bottom: 100px;
+      right: 20px;
+      width: 120px;
+      height: 160px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+    }
   </style>
 </head>
 <body>
-  <div class="top-bar" id="topBar">Connecting...</div>
+  <div class="top-bar">
+    <h3 id="callUserName">Calling...</h3>
+    <span id="callTypeText"></span>
+  </div>
+
   <video id="remoteVideo" autoplay playsinline></video>
-  <video id="localVideo" autoplay playsinline muted></video>
-  <div id="controls">
-    <button id="toggleCam">🎥</button>
-    <button id="toggleMic">🎤</button>
-    <button id="endCall">❌</button>
+  <div class="mini">
+    <video id="localVideo" autoplay playsinline muted></video>
+  </div>
+
+  <div class="controls">
+    <button id="muteBtn">🔇</button>
+    <button id="videoToggleBtn">📷</button>
+    <button class="end" id="endCallBtn">❌</button>
   </div>
 
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+
   <script>
+    // ✅ Init Firebase (replace with your existing config)
     const firebaseConfig = {
       apiKey: "AIzaSyD9dwHPDTJr1-mFXPW_JZnVS-JyZ6BNMgU",
       authDomain: "smart-waste-66279.firebaseapp.com",
@@ -36,88 +100,82 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
+    // ✅ DOM elements
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
-    const topBar = document.getElementById('topBar');
-    const toggleCam = document.getElementById('toggleCam');
-    const toggleMic = document.getElementById('toggleMic');
-    const endCall = document.getElementById('endCall');
+    const callUserName = document.getElementById('callUserName');
+    const callTypeText = document.getElementById('callTypeText');
+    const muteBtn = document.getElementById('muteBtn');
+    const videoToggleBtn = document.getElementById('videoToggleBtn');
+    const endCallBtn = document.getElementById('endCallBtn');
 
+    // ✅ Parse URL
     const params = new URLSearchParams(window.location.search);
     const calleeId = params.get('callee');
-    const callType = params.get('type');
+    const callType = params.get('type') || 'video';
+    callTypeText.textContent = callType === 'voice' ? 'Voice Call' : 'Video Call';
 
-    let localStream, peerConnection;
-    const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    let localStream;
+    let remoteStream;
+    let pc;
+    let muted = false;
+    let cameraOn = true;
 
-    async function init() {
-      topBar.textContent = `Calling ${calleeId} (${callType})...`;
-      localStream = await navigator.mediaDevices.getUserMedia({
-        video: callType === 'video',
-        audio: true
-      });
-      localVideo.srcObject = localStream;
-
-      peerConnection = new RTCPeerConnection(servers);
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-      peerConnection.ontrack = event => {
-        remoteVideo.srcObject = event.streams[0];
-      };
-
-      const callDoc = db.collection('calls').doc();
-      const offerCandidates = callDoc.collection('offerCandidates');
-      const answerCandidates = callDoc.collection('answerCandidates');
-
-      peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-          offerCandidates.add(event.candidate.toJSON());
-        }
-      };
-
-      const offerDescription = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offerDescription);
-
-      const offer = { sdp: offerDescription.sdp, type: offerDescription.type, from: calleeId, callType };
-      await callDoc.set({ offer });
-
-      callDoc.onSnapshot(snapshot => {
-        const data = snapshot.data();
-        if (!peerConnection.currentRemoteDescription && data?.answer) {
-          const answerDescription = new RTCSessionDescription(data.answer);
-          peerConnection.setRemoteDescription(answerDescription);
-          topBar.textContent = `In Call with ${calleeId}`;
-        }
-      });
-
-      answerCandidates.onSnapshot(snapshot => {
-        snapshot.docChanges().forEach(change => {
-          if (change.type === 'added') {
-            const candidate = new RTCIceCandidate(change.doc.data());
-            peerConnection.addIceCandidate(candidate);
-          }
+    // ✅ Start camera/mic preview immediately (like WhatsApp)
+    async function startLocalPreview() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: callType === 'video',
+          audio: true
         });
-      });
+        localVideo.srcObject = localStream;
 
-      toggleCam.onclick = () => {
-        const videoTrack = localStream.getVideoTracks()[0];
-        if (videoTrack) {
-          videoTrack.enabled = !videoTrack.enabled;
-          toggleCam.textContent = videoTrack.enabled ? "🎥" : "🚫";
-        }
-      };
-      toggleMic.onclick = () => {
-        const audioTrack = localStream.getAudioTracks()[0];
-        audioTrack.enabled = !audioTrack.enabled;
-        toggleMic.textContent = audioTrack.enabled ? "🎤" : "🔇";
-      };
-      endCall.onclick = () => {
-        peerConnection.close();
-        window.close();
-      };
+        // 🔔 In real app — send signal to receiver here
+        // Example:
+        // db.collection('calls').add({ from: currentUserId, to: calleeId, type: callType })
+
+      } catch (err) {
+        console.error('Media error:', err);
+        alert('Failed to access camera/mic. Please allow permissions.');
+      }
     }
 
-    init();
+    startLocalPreview();
+
+    // 🔇 Toggle mute
+    muteBtn.onclick = () => {
+      if (!localStream) return;
+      muted = !muted;
+      localStream.getAudioTracks().forEach(t => t.enabled = !muted);
+      muteBtn.textContent = muted ? '🔈' : '🔇';
+    };
+
+    // 📸 Toggle camera
+    videoToggleBtn.onclick = () => {
+      if (!localStream) return;
+      cameraOn = !cameraOn;
+      localStream.getVideoTracks().forEach(t => t.enabled = cameraOn);
+      videoToggleBtn.textContent = cameraOn ? '📷' : '🚫';
+    };
+
+    // ❌ End call
+    endCallBtn.onclick = () => {
+      localStream?.getTracks().forEach(track => track.stop());
+      window.close();
+    };
+
+    // 🧑‍🤝‍🧑 Show name if passed in query (optional)
+    const nameParam = params.get('name');
+    if (nameParam) {
+      callUserName.textContent = decodeURIComponent(nameParam);
+    } else {
+      callUserName.textContent = 'Calling...';
+    }
+
+    // 🚀 Note:
+    // At this point, the camera is on even if the other user hasn't joined.
+    // Next step is to set up a WebRTC peer connection and use Firebase
+    // as signaling to exchange SDP offers/answers between caller & callee.
   </script>
 </body>
 </html>
