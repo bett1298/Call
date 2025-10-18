@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Safe WhatsApp-style Call</title>
+<title>WhatsApp-style Call</title>
 <style>
-html, body { margin:0; padding:0; font-family:Arial; height:100%; display:flex; flex-direction:column; background:#111; color:#fff; }
-header { text-align:center; padding:12px 0; font-size:18px; font-weight:bold; background:rgba(0,0,0,0.5); }
+html, body { margin:0; padding:0; font-family:Arial; background:#111; color:#fff; height:100%; display:flex; flex-direction:column; }
+header { text-align:center; padding:12px; font-size:18px; font-weight:bold; background:rgba(0,0,0,0.5); }
 .video-container { flex:1; position:relative; display:flex; justify-content:center; align-items:center; background:#000; }
 #remoteVideo { width:100%; height:100%; object-fit:cover; }
 #localVideo { position:absolute; bottom:20px; right:20px; width:120px; height:160px; border:2px solid #25D366; border-radius:12px; object-fit:cover; z-index:2; }
 .controls { display:flex; justify-content:center; padding:12px 0; background:rgba(0,0,0,0.5); gap:15px; flex-wrap:wrap; }
-.controls button { background:#25D366; border:none; color:#fff; padding:10px 18px; font-size:14px; border-radius:50px; cursor:pointer; font-weight:bold; transition:0.2s; display:none; }
+.controls button { background:#25D366; border:none; color:#fff; padding:10px 18px; font-size:14px; border-radius:50px; cursor:pointer; font-weight:bold; transition:0.2s; }
 .controls button:hover { background:#128C7E; }
 </style>
 </head>
@@ -22,120 +22,120 @@ header { text-align:center; padding:12px 0; font-size:18px; font-weight:bold; ba
   <video id="localVideo" autoplay muted playsinline></video>
 </div>
 <div class="controls">
-  <button id="answerCallBtn">Answer</button>
   <button id="endCallBtn">End Call</button>
-  <button id="muteBtn">Mute</button>
   <button id="switchBtn">Switch Camera</button>
   <button id="flashBtn">Flash</button>
+  <button id="muteBtn">Mute</button>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-import { getFirestore, doc, collection, addDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+import { getFirestore, doc, collection, addDoc, updateDoc, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
+// ---------------- Firebase setup ----------------
 const firebaseConfig = {
-  apiKey: "...", authDomain:"...", projectId:"...", storageBucket:"...", messagingSenderId:"...", appId:"..."
+  apiKey:"...", authDomain:"...", projectId:"...", storageBucket:"...", messagingSenderId:"...", appId:"..."
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// ---------------- Params ----------------
 const params = new URLSearchParams(window.location.search);
 const callId = params.get('callId');
-const role = params.get('role'); // caller or callee
-const callType = params.get('type'); // video or voice
+const role = params.get('role'); // 'caller' or 'callee'
+const callType = params.get('type'); // 'video' or 'voice'
 
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
 const header = document.getElementById('callHeader');
 
-const answerBtn = document.getElementById('answerCallBtn');
 const endBtn = document.getElementById('endCallBtn');
-const muteBtn = document.getElementById('muteBtn');
 const switchBtn = document.getElementById('switchBtn');
 const flashBtn = document.getElementById('flashBtn');
+const muteBtn = document.getElementById('muteBtn');
 
-let localStream, peerConnection, currentCamera='user', torchOn=false;
+let peerConnection, localStream, currentCamera='user', torchOn=false;
 
-const callDoc = doc(db, "calls", callId);
-const offerCandidates = collection(callDoc, "offerCandidates");
-const answerCandidates = collection(callDoc, "answerCandidates");
-const servers = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
-
-// --- Start preview even if other user is not connected
+// ---------------- Local preview ----------------
 async function startPreview(camera='user') {
   try {
-    const constraints = (callType==='video') ? { video:{ facingMode: camera }, audio:true } : { audio:true };
+    const constraints = callType==='video' ? { video:{ facingMode:camera }, audio:true } : { audio:true };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
     localVideo.srcObject = localStream;
-    muteBtn.style.display = localStream.getAudioTracks().length ? 'inline-block' : 'none';
-    switchBtn.style.display = localStream.getVideoTracks().length ? 'inline-block' : 'none';
-    flashBtn.style.display = localStream.getVideoTracks().length ? 'inline-block' : 'none';
   } catch(e) {
-    alert('Camera/mic access denied or unavailable.');
+    alert("Camera/mic access denied.");
     console.log(e);
   }
 }
 
+// ---------------- WebRTC setup ----------------
 async function initCall() {
   await startPreview(currentCamera);
-  peerConnection = new RTCPeerConnection(servers);
 
-  if(localStream) localStream.getTracks().forEach(track=>peerConnection.addTrack(track, localStream));
+  peerConnection = new RTCPeerConnection({ iceServers:[{urls:'stun:stun.l.google.com:19302'}] });
 
-  peerConnection.ontrack = e => {
-    remoteVideo.srcObject = e.streams[0];
-    header.textContent='In Call';
-  };
+  if(localStream) localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+  peerConnection.ontrack = e => remoteVideo.srcObject = e.streams[0];
+
+  const callDoc = doc(db, "calls", callId);
+  const offerCandidates = collection(callDoc, "offerCandidates");
+  const answerCandidates = collection(callDoc, "answerCandidates");
 
   peerConnection.onicecandidate = async e => {
     if(!e.candidate) return;
-    const target = (role==='caller') ? offerCandidates : answerCandidates;
+    const target = role==='caller' ? offerCandidates : answerCandidates;
     await addDoc(target, e.candidate.toJSON());
   };
 
+  // ---------------- Caller ----------------
   if(role==='caller') {
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
-    await updateDoc(callDoc, { offer, status:'calling' });
-    header.textContent='Calling...';
-    endBtn.style.display='inline-block';
-  } else {
-    // Callee shows Answer button
+    await updateDoc(callDoc, { offer: offer.toJSON(), status:'ringing' });
+
     onSnapshot(callDoc, snap => {
       const data = snap.data();
-      if(data?.status==='calling') answerBtn.style.display='inline-block';
+      if(data?.answer && !peerConnection.currentRemoteDescription) {
+        peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        header.textContent='In Call';
+      }
       if(data?.status==='ended') endCall();
     });
 
-    answerBtn.onclick = async () => {
-      answerBtn.style.display='none';
-      endBtn.style.display='inline-block';
-      const dataSnap = await callDoc.get();
-      const data = (await dataSnap.data()) || {};
+    onSnapshot(answerCandidates, snap => {
+      snap.docChanges().forEach(change => {
+        if(change.type==='added') peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+      });
+    });
+
+  } else { // ---------------- Callee ----------------
+    onSnapshot(callDoc, async snap => {
+      const data = snap.data();
       if(data?.offer && !peerConnection.currentRemoteDescription) {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
-        await updateDoc(callDoc, { answer, status:'in-call' });
+        await updateDoc(callDoc, { answer: answer.toJSON(), status:'in-call' });
+        header.textContent='In Call';
       }
-      onSnapshot(offerCandidates, snap=>{
-        snap.docChanges().forEach(c=>{
-          if(c.type==='added') peerConnection.addIceCandidate(new RTCIceCandidate(c.doc.data()));
-        });
-      });
-    };
-  }
+      if(data?.status==='ended') endCall();
+    });
 
-  // Play ringing sound
-  const audio = new Audio('https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg');
-  audio.loop=true; audio.play().catch(e=>console.log(e));
+    onSnapshot(offerCandidates, snap => {
+      snap.docChanges().forEach(change => {
+        if(change.type==='added') peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+      });
+    });
+  }
 }
 
-// --- Button actions ---
+// ---------------- Button functions ----------------
+endBtn.onclick = endCall;
+
 muteBtn.onclick = () => {
   if(!localStream?.getAudioTracks()?.length) return;
-  localStream.getAudioTracks().forEach(t=>t.enabled = !t.enabled);
+  localStream.getAudioTracks().forEach(t => t.enabled = !t.enabled);
   muteBtn.textContent = localStream.getAudioTracks()[0].enabled ? 'Mute' : 'Unmute';
 };
 
@@ -150,23 +150,23 @@ switchBtn.onclick = async () => {
 flashBtn.onclick = async () => {
   if(!localStream?.getVideoTracks()?.length) return;
   const track = localStream.getVideoTracks()[0];
-  if(track.getCapabilities?.().torch) {
-    try {
-      torchOn = !torchOn;
-      await track.applyConstraints({ advanced:[{ torch: torchOn }] });
-      flashBtn.textContent = torchOn ? 'Flash Off' : 'Flash';
-    } catch(e){ console.log('Torch error', e); }
-  } else alert('Flash not supported');
+  if(track.getCapabilities?.().torch){
+    torchOn = !torchOn;
+    try{ await track.applyConstraints({ advanced:[{ torch: torchOn }] }); }
+    catch(e){ console.log("Torch error", e); }
+    flashBtn.textContent = torchOn ? 'Flash Off' : 'Flash';
+  } else alert("Flash not supported");
 };
 
+// ---------------- End Call ----------------
 async function endCall() {
-  try { await updateDoc(callDoc, { status:'ended' }); } catch(e){}
+  try { await updateDoc(doc(db,"calls",callId), { status:'ended' }); } catch(e){}
   peerConnection?.close();
   localStream?.getTracks().forEach(t=>t.stop());
   window.close();
 }
 
-endBtn.onclick=endCall;
+// ---------------- Start ----------------
 initCall();
 </script>
 </body>
