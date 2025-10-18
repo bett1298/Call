@@ -1,206 +1,173 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Call Room</title>
+<title>Safe WhatsApp-style Call</title>
 <style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: #111;
-    color: #fff;
-    font-family: Arial, sans-serif;
-    height: 100%;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-  header {
-    text-align: center;
-    padding: 10px;
-    background: rgba(0,0,0,0.6);
-    font-size: 18px;
-    font-weight: 600;
-  }
-  .video-container {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    position: relative;
-    background: #000;
-  }
-  video {
-    background: #000;
-    border-radius: 10px;
-    object-fit: cover;
-  }
-  #localVideo {
-    position: absolute;
-    width: 150px;
-    height: 200px;
-    bottom: 10px;
-    right: 10px;
-    border: 2px solid #fff;
-  }
-  #remoteVideo {
-    width: 100%;
-    height: 100%;
-  }
-  .controls {
-    padding: 10px;
-    text-align: center;
-    background: rgba(0,0,0,0.6);
-  }
-  .controls button {
-    background: red;
-    color: #fff;
-    border: none;
-    padding: 10px 20px;
-    font-size: 16px;
-    border-radius: 50px;
-    cursor: pointer;
-  }
-  .controls button:hover {
-    background: #c00;
-  }
+html, body { margin:0; padding:0; font-family:Arial; height:100%; display:flex; flex-direction:column; background:#111; color:#fff; }
+header { text-align:center; padding:12px 0; font-size:18px; font-weight:bold; background:rgba(0,0,0,0.5); }
+.video-container { flex:1; position:relative; display:flex; justify-content:center; align-items:center; background:#000; }
+#remoteVideo { width:100%; height:100%; object-fit:cover; }
+#localVideo { position:absolute; bottom:20px; right:20px; width:120px; height:160px; border:2px solid #25D366; border-radius:12px; object-fit:cover; z-index:2; }
+.controls { display:flex; justify-content:center; padding:12px 0; background:rgba(0,0,0,0.5); gap:15px; flex-wrap:wrap; }
+.controls button { background:#25D366; border:none; color:#fff; padding:10px 18px; font-size:14px; border-radius:50px; cursor:pointer; font-weight:bold; transition:0.2s; display:none; }
+.controls button:hover { background:#128C7E; }
 </style>
 </head>
 <body>
-
 <header id="callHeader">Connecting...</header>
-
 <div class="video-container">
   <video id="remoteVideo" autoplay playsinline></video>
   <video id="localVideo" autoplay muted playsinline></video>
 </div>
-
 <div class="controls">
+  <button id="answerCallBtn">Answer</button>
   <button id="endCallBtn">End Call</button>
+  <button id="muteBtn">Mute</button>
+  <button id="switchBtn">Switch Camera</button>
+  <button id="flashBtn">Flash</button>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-import { getFirestore, doc, getDoc, updateDoc, onSnapshot, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+import { getFirestore, doc, collection, addDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
-// 🔹 Firebase config
 const firebaseConfig = {
-    apiKey: "AIzaSyD9dwHPDTJr1-mFXPW_JZnVS-JyZ6BNMgU",
-    authDomain: "smart-waste-66279.firebaseapp.com",
-    projectId: "smart-waste-66279",
-    storageBucket: "smart-waste-66279.appspot.com",
-    messagingSenderId: "619099585646",
-    appId: "1:619099585646:web:b193d2a9fc13347d88ba7f"
-  };
+  apiKey: "...", authDomain:"...", projectId:"...", storageBucket:"...", messagingSenderId:"...", appId:"..."
+};
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 🔹 Read URL params
 const params = new URLSearchParams(window.location.search);
 const callId = params.get('callId');
-const role = params.get('role'); // 'caller' or 'callee'
-const callType = params.get('type'); // 'voice' or 'video'
+const role = params.get('role'); // caller or callee
+const callType = params.get('type'); // video or voice
 
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
 const header = document.getElementById('callHeader');
 
-let localStream, peerConnection;
+const answerBtn = document.getElementById('answerCallBtn');
+const endBtn = document.getElementById('endCallBtn');
+const muteBtn = document.getElementById('muteBtn');
+const switchBtn = document.getElementById('switchBtn');
+const flashBtn = document.getElementById('flashBtn');
+
+let localStream, peerConnection, currentCamera='user', torchOn=false;
+
 const callDoc = doc(db, "calls", callId);
 const offerCandidates = collection(callDoc, "offerCandidates");
 const answerCandidates = collection(callDoc, "answerCandidates");
-const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+const servers = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
 
-// 🔹 Start preview immediately (WhatsApp style)
-async function startPreview() {
-  const constraints = callType === 'video' ? { video: true, audio: true } : { audio: true };
-  localStream = await navigator.mediaDevices.getUserMedia(constraints);
-  localVideo.srcObject = localStream;
+// --- Start preview even if other user is not connected
+async function startPreview(camera='user') {
+  try {
+    const constraints = (callType==='video') ? { video:{ facingMode: camera }, audio:true } : { audio:true };
+    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    localVideo.srcObject = localStream;
+    muteBtn.style.display = localStream.getAudioTracks().length ? 'inline-block' : 'none';
+    switchBtn.style.display = localStream.getVideoTracks().length ? 'inline-block' : 'none';
+    flashBtn.style.display = localStream.getVideoTracks().length ? 'inline-block' : 'none';
+  } catch(e) {
+    alert('Camera/mic access denied or unavailable.');
+    console.log(e);
+  }
 }
 
-// 🔹 Initialize WebRTC call
 async function initCall() {
-  await startPreview();
-
+  await startPreview(currentCamera);
   peerConnection = new RTCPeerConnection(servers);
-  localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-  peerConnection.ontrack = e => remoteVideo.srcObject = e.streams[0];
+  if(localStream) localStream.getTracks().forEach(track=>peerConnection.addTrack(track, localStream));
 
-  peerConnection.onicecandidate = async (event) => {
-    if (event.candidate) {
-      const targetCollection = role === 'caller' ? offerCandidates : answerCandidates;
-      await addDoc(targetCollection, event.candidate.toJSON());
-    }
+  peerConnection.ontrack = e => {
+    remoteVideo.srcObject = e.streams[0];
+    header.textContent='In Call';
   };
 
-  // 🔹 Ringtone sound
-  const ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_alerts.ogg');
-  ringtone.loop = true;
+  peerConnection.onicecandidate = async e => {
+    if(!e.candidate) return;
+    const target = (role==='caller') ? offerCandidates : answerCandidates;
+    await addDoc(target, e.candidate.toJSON());
+  };
 
-  if (role === 'caller') {
-    const offerDescription = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offerDescription);
-    await updateDoc(callDoc, { offer: offerDescription, status: 'ringing' });
-    ringtone.play();
-
-    onSnapshot(callDoc, snapshot => {
-      const data = snapshot.data();
-      if (data?.status === 'accepted' || data?.status === 'rejected') ringtone.pause();
-      if (data?.answer && !peerConnection.currentRemoteDescription) {
-        peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-      }
-    });
-
-    onSnapshot(answerCandidates, snapshot => {
-      snapshot.docChanges().forEach(change => {
-        if (change.type === 'added') peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-      });
-    });
-
+  if(role==='caller') {
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    await updateDoc(callDoc, { offer, status:'calling' });
+    header.textContent='Calling...';
+    endBtn.style.display='inline-block';
   } else {
-    ringtone.play();
-    onSnapshot(callDoc, async snapshot => {
-      const data = snapshot.data();
-      if (data?.offer && !peerConnection.currentRemoteDescription) {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answerDescription = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answerDescription);
-        await updateDoc(callDoc, { answer: answerDescription, status: 'accepted' });
-        ringtone.pause();
-      }
+    // Callee shows Answer button
+    onSnapshot(callDoc, snap => {
+      const data = snap.data();
+      if(data?.status==='calling') answerBtn.style.display='inline-block';
+      if(data?.status==='ended') endCall();
     });
 
-    onSnapshot(offerCandidates, snapshot => {
-      snapshot.docChanges().forEach(change => {
-        if (change.type === 'added') peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+    answerBtn.onclick = async () => {
+      answerBtn.style.display='none';
+      endBtn.style.display='inline-block';
+      const dataSnap = await callDoc.get();
+      const data = (await dataSnap.data()) || {};
+      if(data?.offer && !peerConnection.currentRemoteDescription) {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        await updateDoc(callDoc, { answer, status:'in-call' });
+      }
+      onSnapshot(offerCandidates, snap=>{
+        snap.docChanges().forEach(c=>{
+          if(c.type==='added') peerConnection.addIceCandidate(new RTCIceCandidate(c.doc.data()));
+        });
       });
-    });
+    };
   }
 
-  header.innerText = `Call (${callType}) - ${role === 'caller' ? 'Calling...' : 'Incoming...'}`;
-
-  // 🔹 End call detection
-  onSnapshot(callDoc, snapshot => {
-    const data = snapshot.data();
-    if (data?.status === 'ended') endCall();
-  });
+  // Play ringing sound
+  const audio = new Audio('https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg');
+  audio.loop=true; audio.play().catch(e=>console.log(e));
 }
 
-// 🔹 End call
+// --- Button actions ---
+muteBtn.onclick = () => {
+  if(!localStream?.getAudioTracks()?.length) return;
+  localStream.getAudioTracks().forEach(t=>t.enabled = !t.enabled);
+  muteBtn.textContent = localStream.getAudioTracks()[0].enabled ? 'Mute' : 'Unmute';
+};
+
+switchBtn.onclick = async () => {
+  if(!localStream?.getVideoTracks()?.length) return;
+  currentCamera = currentCamera==='user' ? 'environment' : 'user';
+  localStream.getTracks().forEach(t=>t.stop());
+  await startPreview(currentCamera);
+  localStream.getTracks().forEach(track => peerConnection?.addTrack(track, localStream));
+};
+
+flashBtn.onclick = async () => {
+  if(!localStream?.getVideoTracks()?.length) return;
+  const track = localStream.getVideoTracks()[0];
+  if(track.getCapabilities?.().torch) {
+    try {
+      torchOn = !torchOn;
+      await track.applyConstraints({ advanced:[{ torch: torchOn }] });
+      flashBtn.textContent = torchOn ? 'Flash Off' : 'Flash';
+    } catch(e){ console.log('Torch error', e); }
+  } else alert('Flash not supported');
+};
+
 async function endCall() {
-  try { await updateDoc(callDoc, { status: 'ended' }); } catch(e){}
-  if (peerConnection) peerConnection.close();
-  if (localStream) localStream.getTracks().forEach(track => track.stop());
+  try { await updateDoc(callDoc, { status:'ended' }); } catch(e){}
+  peerConnection?.close();
+  localStream?.getTracks().forEach(t=>t.stop());
   window.close();
 }
 
-document.getElementById('endCallBtn').onclick = endCall;
-
-// 🔹 Start
-document.addEventListener('DOMContentLoaded', initCall);
-
+endBtn.onclick=endCall;
+initCall();
 </script>
 </body>
 </html>
