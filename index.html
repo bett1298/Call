@@ -1099,46 +1099,107 @@ function startCall(receiverId) {
   });
   </script>
   <script>
-function listenForIncomingCalls(currentUserId) {
+// Listen for incoming calls
+function listenForIncomingCalls() {
   db.collection('calls')
-    .where('calleeId', '==', currentUserId)
+    .where('toId', '==', currentUserId)
     .where('status', '==', 'ringing')
     .onSnapshot(snapshot => {
       snapshot.docChanges().forEach(change => {
         if (change.type === 'added') {
-          const call = change.doc.data();
-          const callId = change.doc.id;
-
-          const popup = document.createElement('div');
-          popup.style.position = 'fixed';
-          popup.style.top = '20px';
-          popup.style.right = '20px';
-          popup.style.background = '#fff';
-          popup.style.padding = '15px';
-          popup.style.borderRadius = '10px';
-          popup.style.boxShadow = '0 2px 8px rgba(0,0,0,0.25)';
-          popup.style.zIndex = '9999';
-          popup.innerHTML = `
-            <p>📞 Incoming ${call.type} call</p>
-            <button id="acceptCall">Accept</button>
-            <button id="rejectCall">Reject</button>
-          `;
-          document.body.appendChild(popup);
-
-          document.getElementById('acceptCall').onclick = async () => {
-            await db.collection('calls').doc(callId).update({ status: 'answered' });
-            window.open(`callroom.html?callId=${callId}&role=callee`, '_blank');
-            popup.remove();
-          };
-
-          document.getElementById('rejectCall').onclick = async () => {
-            await db.collection('calls').doc(callId).update({ status: 'declined' });
-            popup.remove();
-          };
+          const callData = change.doc.data();
+          showIncomingCall(callData, change.doc.id);
         }
       });
     });
 }
+
+function showIncomingCall(callData, callId) {
+  if (document.visibilityState === 'visible') {
+    // Audio alert
+    const audio = new Audio('https://actions.google.com/sounds/v1/alarms/phone_alerts.ogg'); 
+    audio.loop = true;
+    audio.play();
+
+    // Screen flash
+    const stopFlash = flashScreen();
+
+    // Optional phone flashlight (works on some Android browsers)
+    let torchStream;
+    async function turnOnFlash() {
+      try {
+        torchStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", torch: true }
+        });
+      } catch (e) {
+        console.warn("Flash not supported", e);
+      }
+    }
+    turnOnFlash();
+
+    // Popup
+    const popup = document.createElement('div');
+    popup.style.position = 'fixed';
+    popup.style.top = '20px';
+    popup.style.right = '20px';
+    popup.style.background = '#fff';
+    popup.style.color = '#000';
+    popup.style.padding = '15px';
+    popup.style.border = '2px solid #2196F3';
+    popup.style.borderRadius = '10px';
+    popup.style.zIndex = '9999';
+    popup.innerHTML = `
+      <strong>Incoming ${callData.type} call from ${callData.fromName}</strong>
+      <br>
+      <button id="acceptCallBtn">Accept</button>
+      <button id="rejectCallBtn">Reject</button>
+    `;
+    document.body.appendChild(popup);
+
+    const stopAllAlerts = () => {
+      audio.pause();
+      stopFlash();
+      if (torchStream) torchStream.getTracks().forEach(t => t.stop());
+    };
+
+    document.getElementById('acceptCallBtn').onclick = () => {
+      stopAllAlerts();
+      db.collection('calls').doc(callId).update({ status: 'accepted' });
+      window.open(`callroom.html?callId=${callId}&role=callee&type=${callData.type}`, '_blank');
+      popup.remove();
+    };
+    document.getElementById('rejectCallBtn').onclick = () => {
+      stopAllAlerts();
+      db.collection('calls').doc(callId).update({ status: 'rejected' });
+      popup.remove();
+    };
+  }
+}
+
+// Screen flash function
+function flashScreen() {
+  const flash = document.createElement('div');
+  flash.style.position = 'fixed';
+  flash.style.top = 0;
+  flash.style.left = 0;
+  flash.style.width = '100%';
+  flash.style.height = '100%';
+  flash.style.background = 'rgba(255,255,0,0.3)';
+  flash.style.zIndex = 9998;
+  flash.style.pointerEvents = 'none';
+  document.body.appendChild(flash);
+
+  let visible = true;
+  const interval = setInterval(() => {
+    flash.style.background = visible ? 'rgba(255,255,0,0.3)' : 'transparent';
+    visible = !visible;
+  }, 500);
+
+  return () => { clearInterval(interval); flash.remove(); };
+}
+
+// Start listening
+listenForIncomingCalls();
 </script>
 
 </body>

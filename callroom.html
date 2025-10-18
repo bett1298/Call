@@ -1,93 +1,91 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Call Room</title>
-  <style>
-    body {
-      margin: 0;
-      background: #000;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      font-family: Arial, sans-serif;
-      color: #fff;
-    }
-    header {
-      padding: 10px;
-      background: rgba(0,0,0,0.6);
-      text-align: center;
-      font-size: 18px;
-      font-weight: bold;
-    }
-    #videos {
-      flex: 1;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      position: relative;
-    }
-    video {
-      background: #333;
-      border-radius: 10px;
-    }
-    #localVideo {
-      width: 35%;
-      position: absolute;
-      bottom: 10px;
-      right: 10px;
-      z-index: 2;
-      transform: scaleX(-1);
-    }
-    #remoteVideo {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      transform: scaleX(-1);
-    }
-    footer {
-      padding: 10px;
-      background: rgba(0,0,0,0.6);
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-    }
-    button {
-      padding: 10px 15px;
-      border: none;
-      border-radius: 50%;
-      font-size: 20px;
-      cursor: pointer;
-    }
-    .end {
-      background: red;
-      color: #fff;
-    }
-    .mute {
-      background: #444;
-      color: #fff;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Call Room</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #111;
+    color: #fff;
+    font-family: Arial, sans-serif;
+    height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    text-align: center;
+    padding: 10px;
+    background: rgba(0,0,0,0.6);
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .video-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    background: #000;
+  }
+  video {
+    background: #000;
+    border-radius: 10px;
+    object-fit: cover;
+  }
+  #localVideo {
+    position: absolute;
+    width: 150px;
+    height: 200px;
+    bottom: 10px;
+    right: 10px;
+    border: 2px solid #fff;
+  }
+  #remoteVideo {
+    width: 100%;
+    height: 100%;
+  }
+  .controls {
+    padding: 10px;
+    text-align: center;
+    background: rgba(0,0,0,0.6);
+  }
+  .controls button {
+    background: red;
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px;
+    border-radius: 50px;
+    cursor: pointer;
+  }
+  .controls button:hover {
+    background: #c00;
+  }
+</style>
 </head>
 <body>
-  <header id="usernameDisplay">Connecting…</header>
-  <div id="videos">
-    <video id="remoteVideo" autoplay playsinline></video>
-    <video id="localVideo" autoplay muted playsinline></video>
-  </div>
-  <footer>
-    <button class="mute" id="toggleMuteBtn">🔇</button>
-    <button class="end" id="endCallBtn">📞</button>
-  </footer>
 
-  <!-- ✅ Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+<header id="callHeader">Connecting...</header>
 
-  <script>
-    // 🧩 Your Firebase Config (replace with your actual values)
-    const firebaseConfig = {
+<div class="video-container">
+  <video id="remoteVideo" autoplay playsinline></video>
+  <video id="localVideo" autoplay muted playsinline></video>
+</div>
+
+<div class="controls">
+  <button id="endCallBtn">End Call</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+import { getFirestore, doc, getDoc, updateDoc, onSnapshot, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+
+// 🔹 Firebase config
+const firebaseConfig = {
     apiKey: "AIzaSyD9dwHPDTJr1-mFXPW_JZnVS-JyZ6BNMgU",
     authDomain: "smart-waste-66279.firebaseapp.com",
     projectId: "smart-waste-66279",
@@ -95,141 +93,114 @@
     messagingSenderId: "619099585646",
     appId: "1:619099585646:web:b193d2a9fc13347d88ba7f"
   };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
-    const params = new URLSearchParams(window.location.search);
-    const callId = params.get('callId');
-    const role = params.get('role'); // caller or callee
-    const otherUser = params.get('user') || "Unknown User";
-    const usernameDisplay = document.getElementById('usernameDisplay');
-    usernameDisplay.textContent = `Calling ${otherUser}…`;
+// 🔹 Read URL params
+const params = new URLSearchParams(window.location.search);
+const callId = params.get('callId');
+const role = params.get('role'); // 'caller' or 'callee'
+const callType = params.get('type'); // 'voice' or 'video'
 
-    if (!callId || !role) {
-      document.body.innerHTML = '<h2 style="color:white;text-align:center;margin-top:30px;">❌ Invalid or expired call link.</h2>';
-      throw new Error("Missing callId or role");
+const localVideo = document.getElementById('localVideo');
+const remoteVideo = document.getElementById('remoteVideo');
+const header = document.getElementById('callHeader');
+
+let localStream, peerConnection;
+const callDoc = doc(db, "calls", callId);
+const offerCandidates = collection(callDoc, "offerCandidates");
+const answerCandidates = collection(callDoc, "answerCandidates");
+const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+// 🔹 Start preview immediately (WhatsApp style)
+async function startPreview() {
+  const constraints = callType === 'video' ? { video: true, audio: true } : { audio: true };
+  localStream = await navigator.mediaDevices.getUserMedia(constraints);
+  localVideo.srcObject = localStream;
+}
+
+// 🔹 Initialize WebRTC call
+async function initCall() {
+  await startPreview();
+
+  peerConnection = new RTCPeerConnection(servers);
+  localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+  peerConnection.ontrack = e => remoteVideo.srcObject = e.streams[0];
+
+  peerConnection.onicecandidate = async (event) => {
+    if (event.candidate) {
+      const targetCollection = role === 'caller' ? offerCandidates : answerCandidates;
+      await addDoc(targetCollection, event.candidate.toJSON());
     }
+  };
 
-    let localStream;
-    let remoteStream;
-    let pc;
+  // 🔹 Ringtone sound
+  const ringtone = new Audio('https://actions.google.com/sounds/v1/alarms/phone_alerts.ogg');
+  ringtone.loop = true;
 
-    const servers = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' }
-      ]
-    };
+  if (role === 'caller') {
+    const offerDescription = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offerDescription);
+    await updateDoc(callDoc, { offer: offerDescription, status: 'ringing' });
+    ringtone.play();
 
-    async function initMedia() {
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        document.getElementById('localVideo').srcObject = localStream;
-      } catch (err) {
-        console.error("Media error:", err);
-        alert("Camera/microphone access is required.");
+    onSnapshot(callDoc, snapshot => {
+      const data = snapshot.data();
+      if (data?.status === 'accepted' || data?.status === 'rejected') ringtone.pause();
+      if (data?.answer && !peerConnection.currentRemoteDescription) {
+        peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
       }
-    }
+    });
 
-    async function initCall() {
-      pc = new RTCPeerConnection(servers);
-      remoteStream = new MediaStream();
-      document.getElementById('remoteVideo').srcObject = remoteStream;
+    onSnapshot(answerCandidates, snapshot => {
+      snapshot.docChanges().forEach(change => {
+        if (change.type === 'added') peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+      });
+    });
 
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-      pc.ontrack = event => {
-        event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
-      };
-
-      // ICE candidates
-      const callDoc = db.collection('calls').doc(callId);
-      const offerCandidates = callDoc.collection('offerCandidates');
-      const answerCandidates = callDoc.collection('answerCandidates');
-
-      pc.onicecandidate = event => {
-        if (event.candidate) {
-          const candidate = event.candidate.toJSON();
-          const collection = (role === 'caller') ? offerCandidates : answerCandidates;
-          collection.add(candidate);
-        }
-      };
-
-      if (role === 'caller') {
-        const offerDescription = await pc.createOffer();
-        await pc.setLocalDescription(offerDescription);
-        const offer = {
-          sdp: offerDescription.sdp,
-          type: offerDescription.type,
-        };
-        await callDoc.set({ offer });
-
-        // Listen for answer
-        callDoc.onSnapshot(snapshot => {
-          const data = snapshot.data();
-          if (!pc.currentRemoteDescription && data?.answer) {
-            const answerDescription = new RTCSessionDescription(data.answer);
-            pc.setRemoteDescription(answerDescription);
-          }
-        });
-
-        // Listen for answer ICE
-        answerCandidates.onSnapshot(snapshot => {
-          snapshot.docChanges().forEach(change => {
-            if (change.type === 'added') {
-              const candidate = new RTCIceCandidate(change.doc.data());
-              pc.addIceCandidate(candidate);
-            }
-          });
-        });
-
-      } else if (role === 'callee') {
-        const callData = (await callDoc.get()).data();
-        if (!callData || !callData.offer) {
-          alert("No active call found.");
-          window.close();
-          return;
-        }
-
-        const offerDescription = callData.offer;
-        await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
-
-        const answerDescription = await pc.createAnswer();
-        await pc.setLocalDescription(answerDescription);
-
-        const answer = {
-          type: answerDescription.type,
-          sdp: answerDescription.sdp,
-        };
-        await callDoc.update({ answer });
-
-        // Listen for caller ICE
-        offerCandidates.onSnapshot(snapshot => {
-          snapshot.docChanges().forEach(change => {
-            if (change.type === 'added') {
-              const candidate = new RTCIceCandidate(change.doc.data());
-              pc.addIceCandidate(candidate);
-            }
-          });
-        });
+  } else {
+    ringtone.play();
+    onSnapshot(callDoc, async snapshot => {
+      const data = snapshot.data();
+      if (data?.offer && !peerConnection.currentRemoteDescription) {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answerDescription = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answerDescription);
+        await updateDoc(callDoc, { answer: answerDescription, status: 'accepted' });
+        ringtone.pause();
       }
-    }
+    });
 
-    document.getElementById('toggleMuteBtn').onclick = () => {
-      if (!localStream) return;
-      const audioTrack = localStream.getAudioTracks()[0];
-      audioTrack.enabled = !audioTrack.enabled;
-      document.getElementById('toggleMuteBtn').textContent = audioTrack.enabled ? '🔇' : '🔊';
-    };
+    onSnapshot(offerCandidates, snapshot => {
+      snapshot.docChanges().forEach(change => {
+        if (change.type === 'added') peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+      });
+    });
+  }
 
-    document.getElementById('endCallBtn').onclick = async () => {
-      if (pc) pc.close();
-      if (localStream) localStream.getTracks().forEach(track => track.stop());
-      // Clean up Firestore
-      await db.collection('calls').doc(callId).delete();
-      window.close();
-    };
+  header.innerText = `Call (${callType}) - ${role === 'caller' ? 'Calling...' : 'Incoming...'}`;
 
-    // Start flow
-    initMedia().then(initCall);
-  </script>
+  // 🔹 End call detection
+  onSnapshot(callDoc, snapshot => {
+    const data = snapshot.data();
+    if (data?.status === 'ended') endCall();
+  });
+}
+
+// 🔹 End call
+async function endCall() {
+  try { await updateDoc(callDoc, { status: 'ended' }); } catch(e){}
+  if (peerConnection) peerConnection.close();
+  if (localStream) localStream.getTracks().forEach(track => track.stop());
+  window.close();
+}
+
+document.getElementById('endCallBtn').onclick = endCall;
+
+// 🔹 Start
+document.addEventListener('DOMContentLoaded', initCall);
+
+</script>
 </body>
 </html>
