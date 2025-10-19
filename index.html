@@ -1,173 +1,224 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WhatsApp-style Call</title>
-<style>
-html, body { margin:0; padding:0; font-family:Arial; background:#111; color:#fff; height:100%; display:flex; flex-direction:column; }
-header { text-align:center; padding:12px; font-size:18px; font-weight:bold; background:rgba(0,0,0,0.5); }
-.video-container { flex:1; position:relative; display:flex; justify-content:center; align-items:center; background:#000; }
-#remoteVideo { width:100%; height:100%; object-fit:cover; }
-#localVideo { position:absolute; bottom:20px; right:20px; width:120px; height:160px; border:2px solid #25D366; border-radius:12px; object-fit:cover; z-index:2; }
-.controls { display:flex; justify-content:center; padding:12px 0; background:rgba(0,0,0,0.5); gap:15px; flex-wrap:wrap; }
-.controls button { background:#25D366; border:none; color:#fff; padding:10px 18px; font-size:14px; border-radius:50px; cursor:pointer; font-weight:bold; transition:0.2s; }
-.controls button:hover { background:#128C7E; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DateLink — Call Room</title>
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: #fff0f5;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      color: #ff4f87;
+    }
+    video {
+      width: 45%;
+      border-radius: 12px;
+      background: #000;
+      margin: 10px;
+    }
+    button {
+      background: #ff4f87;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      margin: 5px;
+      cursor: pointer;
+      font-size: 15px;
+    }
+    input {
+      padding: 8px;
+      width: 200px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      margin: 5px;
+    }
+  </style>
 </head>
 <body>
-<header id="callHeader">Connecting...</header>
-<div class="video-container">
-  <video id="remoteVideo" autoplay playsinline></video>
-  <video id="localVideo" autoplay muted playsinline></video>
-</div>
-<div class="controls">
-  <button id="endCallBtn">End Call</button>
-  <button id="switchBtn">Switch Camera</button>
-  <button id="flashBtn">Flash</button>
-  <button id="muteBtn">Mute</button>
-</div>
+  <h1>🎥 DateLink — Call Room</h1>
+  <div>
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+  </div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-import { getFirestore, doc, collection, addDoc, updateDoc, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+  <div>
+    <button id="createBtn">Create Call</button>
+    <input id="callIdInput" placeholder="Enter Call ID" />
+    <button id="joinBtn">Join Call</button>
+  </div>
 
-// ---------------- Firebase setup ----------------
-const firebaseConfig = {
-  apiKey:"...", authDomain:"...", projectId:"...", storageBucket:"...", messagingSenderId:"...", appId:"..."
-};
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+  <p id="status"></p>
 
-// ---------------- Params ----------------
-const params = new URLSearchParams(window.location.search);
-const callId = params.get('callId');
-const role = params.get('role'); // 'caller' or 'callee'
-const callType = params.get('type'); // 'video' or 'voice'
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import {
+      getFirestore, collection, doc, setDoc, getDoc,
+      onSnapshot, updateDoc
+    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-const localVideo = document.getElementById('localVideo');
-const remoteVideo = document.getElementById('remoteVideo');
-const header = document.getElementById('callHeader');
+    // --- Firebase Config ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyD9dwHPDTJr1-mFXPW_JZnVS-JyZ6BNMgU",
+      authDomain: "smart-waste-66279.firebaseapp.com",
+      projectId: "smart-waste-66279",
+      storageBucket: "smart-waste-66279.appspot.com",
+      messagingSenderId: "619099585646",
+      appId: "1:619099585646:web:b193d2a9fc13347d88ba7f"
+    };
 
-const endBtn = document.getElementById('endCallBtn');
-const switchBtn = document.getElementById('switchBtn');
-const flashBtn = document.getElementById('flashBtn');
-const muteBtn = document.getElementById('muteBtn');
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-let peerConnection, localStream, currentCamera='user', torchOn=false;
+    const servers = {
+      iceServers: [
+        { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
+      ]
+    };
 
-// ---------------- Local preview ----------------
-async function startPreview(camera='user') {
-  try {
-    const constraints = callType==='video' ? { video:{ facingMode:camera }, audio:true } : { audio:true };
-    localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    localVideo.srcObject = localStream;
-  } catch(e) {
-    alert("Camera/mic access denied.");
-    console.log(e);
-  }
-}
+    const pc = new RTCPeerConnection(servers);
 
-// ---------------- WebRTC setup ----------------
-async function initCall() {
-  await startPreview(currentCamera);
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const createBtn = document.getElementById('createBtn');
+    const joinBtn = document.getElementById('joinBtn');
+    const callIdInput = document.getElementById('callIdInput');
+    const status = document.getElementById('status');
 
-  peerConnection = new RTCPeerConnection({ iceServers:[{urls:'stun:stun.l.google.com:19302'}] });
+    let localStream;
+    let remoteStream = new MediaStream();
+    remoteVideo.srcObject = remoteStream;
 
-  if(localStream) localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    // ✅ Get local media
+    async function initMedia() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localStream;
 
-  peerConnection.ontrack = e => remoteVideo.srcObject = e.streams[0];
+        // Add each track to the peer connection
+        localStream.getTracks().forEach(track => {
+          pc.addTrack(track, localStream);
+        });
 
-  const callDoc = doc(db, "calls", callId);
-  const offerCandidates = collection(callDoc, "offerCandidates");
-  const answerCandidates = collection(callDoc, "answerCandidates");
-
-  peerConnection.onicecandidate = async e => {
-    if(!e.candidate) return;
-    const target = role==='caller' ? offerCandidates : answerCandidates;
-    await addDoc(target, e.candidate.toJSON());
-  };
-
-  // ---------------- Caller ----------------
-  if(role==='caller') {
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    await updateDoc(callDoc, { offer: offer.toJSON(), status:'ringing' });
-
-    onSnapshot(callDoc, snap => {
-      const data = snap.data();
-      if(data?.answer && !peerConnection.currentRemoteDescription) {
-        peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-        header.textContent='In Call';
+        console.log("✅ Local media ready");
+      } catch (err) {
+        console.error("Media access error:", err);
+        alert("Please allow camera and microphone access.");
       }
-      if(data?.status==='ended') endCall();
-    });
+    }
 
-    onSnapshot(answerCandidates, snap => {
-      snap.docChanges().forEach(change => {
-        if(change.type==='added') peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+    // ✅ Receive remote stream
+    pc.ontrack = event => {
+      console.log("🎥 Received remote track:", event.streams[0]);
+      event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
+    };
+
+    // ✅ Connection state logs
+    pc.onconnectionstatechange = () => console.log("Connection state:", pc.connectionState);
+
+    // --- Create Call ---
+    createBtn.onclick = async () => {
+      await initMedia();
+
+      const callDoc = doc(collection(db, "calls"));
+      const offerCandidates = collection(callDoc, "offerCandidates");
+      const answerCandidates = collection(callDoc, "answerCandidates");
+
+      callIdInput.value = callDoc.id;
+      status.textContent = "Share this Call ID: " + callDoc.id;
+
+      // Save offer ICE candidates
+      pc.onicecandidate = event => {
+        if (event.candidate) {
+          console.log("📡 New ICE candidate (offer):", event.candidate);
+          setDoc(doc(offerCandidates), event.candidate.toJSON());
+        }
+      };
+
+      const offerDescription = await pc.createOffer();
+      await pc.setLocalDescription(offerDescription);
+
+      const offer = {
+        sdp: offerDescription.sdp,
+        type: offerDescription.type
+      };
+      await setDoc(callDoc, { offer });
+
+      // Listen for answer
+      onSnapshot(callDoc, snapshot => {
+        const data = snapshot.data();
+        if (!pc.currentRemoteDescription && data?.answer) {
+          console.log("📩 Received answer:", data.answer);
+          const answerDescription = new RTCSessionDescription(data.answer);
+          pc.setRemoteDescription(answerDescription);
+        }
       });
-    });
 
-  } else { // ---------------- Callee ----------------
-    onSnapshot(callDoc, async snap => {
-      const data = snap.data();
-      if(data?.offer && !peerConnection.currentRemoteDescription) {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        await updateDoc(callDoc, { answer: answer.toJSON(), status:'in-call' });
-        header.textContent='In Call';
+      // Listen for remote ICE candidates (from the joiner)
+      onSnapshot(answerCandidates, snapshot => {
+        snapshot.docChanges().forEach(change => {
+          if (change.type === "added") {
+            const candidate = new RTCIceCandidate(change.doc.data());
+            console.log("🌍 Adding remote ICE candidate:", candidate);
+            pc.addIceCandidate(candidate);
+          }
+        });
+      });
+    };
+
+    // --- Join Call ---
+    joinBtn.onclick = async () => {
+      await initMedia();
+
+      const callId = callIdInput.value.trim();
+      if (!callId) return alert("Enter a Call ID to join.");
+
+      const callDoc = doc(db, "calls", callId);
+      const offerCandidates = collection(callDoc, "offerCandidates");
+      const answerCandidates = collection(callDoc, "answerCandidates");
+
+      // Save joiner ICE candidates
+      pc.onicecandidate = event => {
+        if (event.candidate) {
+          console.log("📡 New ICE candidate (answer):", event.candidate);
+          setDoc(doc(answerCandidates), event.candidate.toJSON());
+        }
+      };
+
+      const callData = (await getDoc(callDoc)).data();
+      if (!callData?.offer) {
+        return alert("Invalid Call ID or call not found.");
       }
-      if(data?.status==='ended') endCall();
-    });
 
-    onSnapshot(offerCandidates, snap => {
-      snap.docChanges().forEach(change => {
-        if(change.type==='added') peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+      await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
+
+      const answerDescription = await pc.createAnswer();
+      await pc.setLocalDescription(answerDescription);
+
+      const answer = {
+        type: answerDescription.type,
+        sdp: answerDescription.sdp
+      };
+      await updateDoc(callDoc, { answer });
+
+      // Listen for remote ICE candidates (from caller)
+      onSnapshot(offerCandidates, snapshot => {
+        snapshot.docChanges().forEach(change => {
+          if (change.type === "added") {
+            const candidate = new RTCIceCandidate(change.doc.data());
+            console.log("🌍 Adding remote ICE candidate:", candidate);
+            pc.addIceCandidate(candidate);
+          }
+        });
       });
-    });
-  }
-}
 
-// ---------------- Button functions ----------------
-endBtn.onclick = endCall;
-
-muteBtn.onclick = () => {
-  if(!localStream?.getAudioTracks()?.length) return;
-  localStream.getAudioTracks().forEach(t => t.enabled = !t.enabled);
-  muteBtn.textContent = localStream.getAudioTracks()[0].enabled ? 'Mute' : 'Unmute';
-};
-
-switchBtn.onclick = async () => {
-  if(!localStream?.getVideoTracks()?.length) return;
-  currentCamera = currentCamera==='user' ? 'environment' : 'user';
-  localStream.getTracks().forEach(t=>t.stop());
-  await startPreview(currentCamera);
-  localStream.getTracks().forEach(track => peerConnection?.addTrack(track, localStream));
-};
-
-flashBtn.onclick = async () => {
-  if(!localStream?.getVideoTracks()?.length) return;
-  const track = localStream.getVideoTracks()[0];
-  if(track.getCapabilities?.().torch){
-    torchOn = !torchOn;
-    try{ await track.applyConstraints({ advanced:[{ torch: torchOn }] }); }
-    catch(e){ console.log("Torch error", e); }
-    flashBtn.textContent = torchOn ? 'Flash Off' : 'Flash';
-  } else alert("Flash not supported");
-};
-
-// ---------------- End Call ----------------
-async function endCall() {
-  try { await updateDoc(doc(db,"calls",callId), { status:'ended' }); } catch(e){}
-  peerConnection?.close();
-  localStream?.getTracks().forEach(t=>t.stop());
-  window.close();
-}
-
-// ---------------- Start ----------------
-initCall();
-</script>
+      status.textContent = "Joined call: " + callId;
+    };
+  </script>
 </body>
 </html>
