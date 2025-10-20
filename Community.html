@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>DateLink — Home</title>
+<style>
+  :root {
+    --primary-color: #ff4f87;
+    --primary-light: rgba(255, 79, 135, 0.1);
+    --text-dark: #333;
+    --text-light: #666;
+    --bg-light: #f8f9fb;
+    --white: #fff;
+    --shadow: 0 2px 8px rgba(0,0,0,.1);
+    --border-radius: 14px;
+  }
+  
+  * {
+    box-sizing: border-box;
+  }
+  
+  body {
+    font-family: 'Poppins', sans-serif;
+    background: var(--bg-light);
+    margin: 0;
+    padding: 0;
+    color: var(--text-dark);
+  }
+  
+  nav {
+    background: var(--white);
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    height: 60px;
+    box-shadow: var(--shadow);
+    z-index: 1000;
+  }
+  .notif-btn {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  position: relative; /* makes badge positioning relative to button */
+  line-height: 1;
+}
+
+.notif-count {
+  position: absolute;
+  top: -6px;   /* tightly attached above bell */
+  right: -4px; /* slightly to the top-right corner */
+  background: red;
+  color: white;
+  font-size: 11px;
+  font-weight: bold;
+  border-radius: 50%;
+  padding: 2px 5px;
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+}
+  
+  nav a {
+    text-decoration: none;
+    color: var(--primary-color);
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 20px;
+    transition: all 0.3s ease;
+  }
+  
+  nav a:hover {
+    background: var(--primary-light);
+  }
+  
+  .container {
+    margin-top: 80px;
+    width: 90%;
+    max-width: 550px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-bottom: 20px;
+  }
+  
+  .post-box {
+    background: var(--white);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 6px rgba(0,0,0,.05);
+    margin-bottom: 20px;
+  }
+  
+  .post-box h3 {
+    margin-top: 0;
+    color: var(--text-dark);
+  }
+  
+  .create-post textarea {
+    width: 100%;
+    border: 1px solid #eee;
+    border-radius: 10px;
+    background: #f5f5f5;
+    padding: 12px;
+    font-family: inherit;
+    resize: none;
+    transition: all 0.3s ease;
+    font-size: 14px;
+  }
+  
+  .create-post textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    background: var(--white);
+  }
+  
+  .create-post input[type=file] {
+    margin: 12px 0;
+    width: 100%;
+  }
+  
+  button {
+    background: var(--primary-color);
+    color: var(--white);
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+  }
+  
+  button:hover {
+    background: #ff2d6f;
+    transform: translateY(-1px);
+  }
+  
+  button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  .feed-post {
+    background: var(--white);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 6px rgba(0,0,0,.05);
+    margin-bottom: 20px;
+    position: relative;
+    transition: transform 0.2s ease;
+  }
+  
+  .feed-post:hover {
+    transform: translateY(-2px);
+  }
+  
+  .feed-post img.post-img, .feed-post video {
+    width: 100%;
+    border-radius: 10px;
+    margin-top: 12px;
+  }
+  
+  .feed-post .actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #eee;
+  }
+  
+  .feed-post .actions button {
+    background: none;
+    color: var(--primary-color);
+    border: none;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 20px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  
+  .feed-post .actions button:hover {
+    background: var(--primary-light);
+  }
+  
+  .feed-post .user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+  
+  .feed-post .user img {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--primary-light);
+  }
+  
+  .feed-post .user strong {
+    font-size: 16px;
+  }
+  
+  .comment-box {
+    margin-top: 12px;
+    background: #f9f9f9;
+    border-radius: 10px;
+    padding: 10px;
+  }
+  
+  .comment-box input {
+    width: 70%;
+    border: none;
+    background: none;
+    outline: none;
+    padding: 8px;
+    font-size: 14px;
+  }
+  
+  .comment {
+    font-size: 14px;
+    margin-top: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid #eee;
+  }
+  
+  .comment:last-child {
+    border-bottom: none;
+  }
+  
+  .profile-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+  }
+  
+  .profile-modal .box {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 24px;
+    text-align: center;
+    width: 90%;
+    max-width: 380px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  }
+  
+  .profile-modal img {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #ffb6c1;
+    margin-bottom: 12px;
+  }
+  
+  .profile-modal button {
+    margin-top: 10px;
+    width: 48%;
+  }
+  
+  .color-options {
+    display: flex;
+    gap: 8px;
+    margin: 12px 0;
+    flex-wrap: wrap;
+  }
+  
+  .color-option {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.2s ease;
+  }
+  
+  .color-option:hover {
+    transform: scale(1.1);
+  }
+  
+  .color-option.selected {
+    border-color: #333;
+  }
+  
+  .text-post {
+    padding: 20px;
+    border-radius: 12px;
+    margin: 12px 0;
+    text-align: center;
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 500;
+    word-break: break-word;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  .post-content {
+    margin: 12px 0;
+    line-height: 1.5;
+  }
+  
+  .loading {
+    text-align: center;
+    padding: 20px;
+    color: var(--primary-color);
+  }
+  
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-light);
+  }
+  
+  .empty-state h3 {
+    margin-bottom: 8px;
+  }
+  
+  .upload-indicator {
+    display: none;
+    color: var(--primary-color);
+    font-size: 14px;
+    margin: 8px 0;
+  }
+  
+  .notification {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--primary-color);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    z-index: 1500;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<nav>
+  <a href="#" class="active">🏠 Home</a>
+  <a href="matchs.html">💞 Match</a>
+  <a href="chats.html">💬 Chats</a>
+  <a href="profile.html">👤 Profile</a>
+
+  <div id="notificationContainer" class="notification-container">
+    <button id="notifBtn" class="notif-btn">
+      🔔 
+      <span id="notifCount" class="notif-count" style="display:none;">0</span>
+    </button>
+    <div id="notifList" class="notif-list" style="display:none;">
+      <p>No notifications yet</p>
+    </div>
+  </div>
+</nav>
+
+<!-- Add the notification sound -->
+<audio id="notifSound" src="notif.mp3" preload="auto"></audio>
+
+
+<div class="container">
+  <div class="post-box create-post">
+    <h3>Create a post</h3>
+    <textarea id="postText" placeholder="What's on your mind?" rows="3"></textarea>
+    <div class="color-options" id="colorOptions">
+      <div class="color-option selected" style="background-color:#ffffff;" data-color="#ffffff"></div>
+      <div class="color-option" style="background-color:#ffebee;" data-color="#ffebee"></div>
+      <div class="color-option" style="background-color:#e8f5e9;" data-color="#e8f5e9"></div>
+      <div class="color-option" style="background-color:#e3f2fd;" data-color="#e3f2fd"></div>
+      <div class="color-option" style="background-color:#fff3e0;" data-color="#fff3e0"></div>
+      <div class="color-option" style="background-color:#f3e5f5;" data-color="#f3e5f5"></div>
+    </div>
+    <input id="postImage" type="file" accept="image/*,video/*">
+    <div class="upload-indicator" id="uploadIndicator">Uploading media...</div>
+    <button id="postBtn">Post</button>
+  </div>
+
+  <div id="feed">
+    <div class="loading">Loading posts...</div>
+  </div>
+</div>
+
+<div class="notification" id="notification"></div>
+<audio id="likeSound" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" preload="auto"></audio>
+
+<div class="profile-modal" id="profileModal">
+  <div class="box" id="profileBox">
+    <img id="modalPhoto" src="" alt="Profile">
+    <h3 id="modalName"></h3>
+    <p id="modalBio"></p>
+    <div style="display:flex;justify-content:space-between;">
+      <button id="messageBtn">👁 View Profile</button>
+      <button id="followBtn">➕ Follow</button>
+    </div>
+    <button style="margin-top:10px;background:#555;width:100%;" onclick="closeProfile()">Close</button>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+
+<script>
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyD9dwHPDTJr1-mFXPW_JZnVS-JyZ6BNMgU",
+  authDomain: "smart-waste-66279.firebaseapp.com",
+  projectId: "smart-waste-66279",
+  storageBucket: "smart-waste-66279.appspot.com",
+  messagingSenderId: "619099585646",
+  appId: "1:619099585646:web:b193d2a9fc13347d88ba7f"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// DOM elements
+const postText = document.getElementById('postText');
+const postImage = document.getElementById('postImage');
+const postBtn = document.getElementById('postBtn');
+const feed = document.getElementById('feed');
+const profileModal = document.getElementById('profileModal');
+const colorOptions = document.getElementById('colorOptions');
+const uploadIndicator = document.getElementById('uploadIndicator');
+const notification = document.getElementById('notification');
+
+// App state
+let currentUser = null;
+let selectedColor = '#ffffff';
+const userCache = {};
+
+// Utility functions
+function showNotification(message, duration = 3000) {
+  notification.textContent = message;
+  notification.style.display = 'block';
+  setTimeout(() => {
+    notification.style.display = 'none';
+  }, duration);
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+function initNotifications() {
+  listenForNotifications();
+}
+// Listen for user changes in real-time
+function listenToUser(uid, callback) {
+  // If we already have a listener for this user, don't create another one
+  if (userCache[uid] && userCache[uid].listener) return;
+  
+  // Set up real-time listener for user data
+  const unsubscribe = db.collection('users').doc(uid).onSnapshot(doc => {
+    if (!doc.exists) return;
+    const data = doc.data();
+    userCache[uid] = { ...data, listener: unsubscribe };
+    callback(data);
+  }, error => {
+    console.error('Error listening to user:', error);
+  });
+}
+
+// Get user data with caching
+async function getUserData(uid) {
+  if (userCache[uid] && !userCache[uid].listener) {
+    return userCache[uid];
+  }
+  
+  try {
+    const doc = await db.collection('users').doc(uid).get();
+    if (doc.exists) {
+      const data = doc.data();
+      userCache[uid] = data;
+      return data;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting user data:', error);
+    return null;
+  }
+}
+
+// Authentication state observer
+auth.onAuthStateChanged(user => {
+  if (!user) { 
+    window.location.href = 'login.html'; 
+    return; 
+  }
+  // Force refresh feed after reload to catch latest posts
+window.addEventListener('load', () => {
+  loadFeed();
+});
+  currentUser = user;
+  loadFeed();
+});
+firebase.auth().onAuthStateChanged(user => {
+  if (user) {
+    currentUser = user;
+    initNotifications();  // ✅ this starts everything
+  }
+});
+
+// Handle color selection
+document.querySelectorAll('.color-option').forEach(opt => {
+  opt.addEventListener('click', function() {
+    document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+    this.classList.add('selected');
+    selectedColor = this.getAttribute('data-color');
+    postText.style.backgroundColor = selectedColor;
+    postText.style.textAlign = 'center';
+  });
+});
+
+// Media upload (imgbb)
+async function uploadMedia(file) {
+  if (!file) return '';
+  
+  uploadIndicator.style.display = 'block';
+  
+  try {
+    const key = "e26f20d023a0094ee31c68ded33ab41d";
+    const form = new FormData();
+    form.append('image', file);
+    
+    const res = await fetch(`https://api.imgbb.com/1/upload?key=${key}`, {
+      method: 'POST',
+      body: form
+    });
+    
+    const json = await res.json();
+    return json.data?.url || '';
+  } catch (error) {
+    console.error('Upload error:', error);
+    showNotification('Failed to upload media');
+    return '';
+  } finally {
+    uploadIndicator.style.display = 'none';
+  }
+}
+
+// Create Post
+postBtn.addEventListener('click', async () => {
+  const text = postText.value.trim();
+  const file = postImage.files[0];
+  
+  if (!text && !file) {
+    showNotification('Write something or add media to post');
+    return;
+  }
+  
+  postBtn.disabled = true; 
+  postBtn.textContent = "Posting...";
+  
+  try {
+    let mediaUrl = ''; 
+    let mediaType = ''; 
+    let bgColor = '';
+    
+    if (file) { 
+      mediaUrl = await uploadMedia(file); 
+      mediaType = file.type.startsWith('video/') ? 'video' : 'image'; 
+      bgColor = '';
+    } else {
+      bgColor = selectedColor;
+    }
+
+    const userDoc = await db.collection('users').doc(currentUser.uid).get();
+    const userData = userDoc.exists ? userDoc.data() : {};
+    
+    const newPostRef = db.collection('posts').doc();
+    await newPostRef.set({
+      uid: currentUser.uid,
+      author: userData.fullName || 'Anonymous',
+      photoURL: userData.photoURL || '',
+      text: escapeHtml(text),
+      mediaUrl,
+      mediaType,
+      bgColor,
+      likes: [],
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    
+    await db.collection('users').doc(currentUser.uid).collection('posts').doc(newPostRef.id).set({
+      text: escapeHtml(text), 
+      mediaUrl, 
+      mediaType, 
+      bgColor, 
+      likes: [], 
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Reset form
+    postText.value = ''; 
+    postImage.value = ''; 
+    postText.style.backgroundColor = '#f5f5f5'; 
+    postText.style.textAlign = 'left';
+    document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+    document.querySelector('.color-option[data-color="#ffffff"]').classList.add('selected');
+    selectedColor = '#ffffff';
+    
+    showNotification('Post published successfully!');
+  } catch (err) {
+    console.error('Post error:', err);
+    showNotification('Error posting: ' + err.message);
+  } finally {
+    postBtn.disabled = false; 
+    postBtn.textContent = "Post";
+  }
+});
+
+// Load Feed with real-time updates - FIXED VERSION
+function loadFeed() {
+  db.collection('posts').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+    if (snapshot.empty) { 
+      feed.innerHTML = '<div class="empty-state"><h3>No posts yet</h3><p>Be the first to share something!</p></div>'; 
+      return;
+    }
+    
+    feed.innerHTML = '';
+    snapshot.forEach(doc => {
+      const p = doc.data(); 
+      const postId = doc.id;
+      const liked = p.likes?.includes(currentUser.uid);
+      const likeCount = p.likes?.length || 0;
+
+      const div = document.createElement('div');
+      div.className = 'feed-post';
+      
+      let contentHTML = '';
+      if (p.text && p.mediaUrl) {
+  contentHTML = `
+    <p class="post-content">${p.text}</p>
+    ${p.mediaType === 'image' 
+      ? `<img src="${p.mediaUrl}" class="post-img" alt="Post image">`
+      : `<video controls src="${p.mediaUrl}" class="post-img"></video>`}
+  `;
+} else if (p.mediaType === 'image') {
+  contentHTML = `<img src="${p.mediaUrl}" class="post-img" alt="Post image">`;
+} else if (p.mediaType === 'video') {
+  contentHTML = `<video controls src="${p.mediaUrl}" class="post-img"></video>`;
+} else if (p.text && p.bgColor) {
+  contentHTML = `<div class="text-post" style="background-color:${p.bgColor};">${p.text}</div>`;
+} else if (p.text) {
+  contentHTML = `<p class="post-content">${p.text}</p>`;
+}
+
+      // Create post with initial data (from post creation time)
+      div.innerHTML = `
+        <div class="user" onclick="showProfile('${p.uid}')">
+          <img src="${p.photoURL || 'https://via.placeholder.com/40'}" alt="${p.author}">
+          <strong>${p.author}</strong>
+        </div>
+        ${contentHTML}
+        <div class="actions">
+          <button onclick="likePost('${postId}')">
+            <span>${liked ? '❤️' : '🤍'}</span>
+            <span>${likeCount}</span>
+          </button>
+          <button id="commentBtn-${postId}" onclick="toggleComments('${postId}')">
+            <span>💬</span>
+            <span id="commentCount-${postId}">0</span>
+          </button>
+        </div>
+        <div id="comments-${postId}" class="comment-box" style="display:none;">
+          <input id="input-${postId}" placeholder="Write a comment..."/>
+          <button onclick="addComment('${postId}')">Send</button>
+          <div id="list-${postId}"></div>
+        </div>
+      `;
+      feed.appendChild(div);
+
+      // Set up real-time listener for user data to keep posts updated
+      listenToUser(p.uid, userData => {
+        const userImg = div.querySelector('.user img');
+        const userName = div.querySelector('.user strong');
+        
+        if (userImg) {
+          userImg.src = userData.photoURL || 'https://via.placeholder.com/40';
+          userImg.alt = userData.fullName || 'User';
+        }
+        if (userName) {
+          userName.textContent = userData.fullName || 'Anonymous';
+        }
+      });
+
+      loadComments(postId);
+    });
+  }, error => {
+    console.error('Error loading feed:', error);
+    feed.innerHTML = '<div class="empty-state"><h3>Error loading posts</h3><p>Please try again later</p></div>';
+  });
+}
+
+// Like functionality
+// Like functionality
+async function likePost(postId) {
+  try {
+    const postRef = db.collection('posts').doc(postId);
+    const docSnap = await postRef.get();
+    if (!docSnap.exists) return;
+
+    const data = docSnap.data();
+    const likes = data.likes || [];
+    const idx = likes.indexOf(currentUser.uid);
+    const alreadyLiked = idx > -1;
+
+    if (alreadyLiked) {
+      likes.splice(idx, 1);
+    } else {
+      likes.push(currentUser.uid);
+      likeSound.currentTime = 0;
+      likeSound.play().catch(() => {}); // play sound when user likes
+    }
+
+    await postRef.update({ likes });
+
+    // 🟢 INSERT THIS BLOCK HERE — AFTER updating likes
+    if (!alreadyLiked) {
+      const postOwner = data.uid;
+      if (postOwner && postOwner !== currentUser.uid) {
+        await sendNotification(
+          postOwner,
+          'like',
+          postId,
+          currentUser.displayName || currentUser.email || 'Someone'
+        );
+      }
+    }
+    // 🔚 END OF INSERTED BLOCK
+
+  } catch (error) {
+    console.error('Error liking post:', error);
+    showNotification('Failed to like post');
+  }
+}
+// Comment functionality
+async function addComment(postId, parentId = null) {
+  const inputId = parentId ? `reply-${parentId}` : `input-${postId}`;
+  const input = document.getElementById(inputId);
+  const text = input.value.trim();
+  
+  if (!text) return;
+  
+  input.value = '';
+
+  try {
+    const commentRef = parentId
+      ? db.collection('posts').doc(postId).collection('comments').doc(parentId).collection('replies').doc()
+      : db.collection('posts').doc(postId).collection('comments').doc();
+
+    await commentRef.set({
+      uid: currentUser.uid,
+      text: escapeHtml(text),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      
+    });
+    const postSnap = await db.collection('posts').doc(postId).get();
+if (postSnap.exists) {
+  const postOwner = postSnap.data().uid;
+  if (postOwner !== currentUser.uid) {
+    await sendNotification(postOwner, 'comment', postId, currentUser.displayName || 'Someone');
+  }
+}
+  } catch (error) {
+    console.error('Error adding comment:', error);
+    showNotification('Failed to add comment');
+  }
+}
+
+// Load comments and nested replies
+function loadComments(postId) {
+  const list = document.getElementById(`list-${postId}`);
+  const commentBtn = document.getElementById(`commentBtn-${postId}`);
+  const commentCount = document.getElementById(`commentCount-${postId}`);
+  
+  db.collection('posts').doc(postId).collection('comments')
+    .orderBy('createdAt', 'asc')
+    .onSnapshot(snap => {
+      list.innerHTML = '';
+      const count = snap.size;
+      commentBtn.textContent = `💬 ${count}`;
+      if (commentCount) commentCount.textContent = count;
+      
+      snap.forEach(doc => {
+        const c = doc.data();
+        const commentDiv = document.createElement('div');
+        commentDiv.className = 'comment';
+        commentDiv.style.marginLeft = '0px';
+
+        // Show user name with real-time updates
+        const userName = userCache[c.uid]?.fullName || 'User';
+        commentDiv.innerHTML = `
+          <strong>${userName}:</strong> ${c.text}
+          <div style="margin-left:12px;">
+            <input id="reply-${doc.id}" placeholder="Reply..." style="width:60%;"/>
+            <button onclick="addComment('${postId}','${doc.id}')">Reply</button>
+            <div id="replies-${doc.id}"></div>
+          </div>
+        `;
+        list.appendChild(commentDiv);
+
+        // Set up listener for comment author
+        listenToUser(c.uid, userData => {
+          const strongEl = commentDiv.querySelector('strong');
+          if (strongEl) strongEl.textContent = `${userData.fullName || 'User'}:`;
+        });
+
+        // Load nested replies
+        loadReplies(postId, doc.id);
+      });
+    }, error => {
+      console.error('Error loading comments:', error);
+    });
+}
+
+// Load replies for a comment
+function loadReplies(postId, commentId) {
+  const list = document.getElementById(`replies-${commentId}`);
+  
+  db.collection('posts').doc(postId).collection('comments').doc(commentId).collection('replies')
+    .orderBy('createdAt', 'asc')
+    .onSnapshot(snap => {
+      list.innerHTML = '';
+      
+      snap.forEach(doc => {
+        const r = doc.data();
+        const replyDiv = document.createElement('div');
+        replyDiv.className = 'comment';
+        replyDiv.style.marginLeft = '20px';
+        const userName = userCache[r.uid]?.fullName || 'User';
+        replyDiv.innerHTML = `<strong>${userName}:</strong> ${r.text}`;
+        list.appendChild(replyDiv);
+
+        // Set up listener for reply author
+        listenToUser(r.uid, userData => {
+          const strongEl = replyDiv.querySelector('strong');
+          if (strongEl) strongEl.textContent = `${userData.fullName || 'User'}:`;
+        });
+      });
+    }, error => {
+      console.error('Error loading replies:', error);
+    });
+}
+
+// Toggle comments box
+function toggleComments(postId) {
+  const box = document.getElementById(`comments-${postId}`);
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+// Profile Modal - FIXED VERSION
+async function showProfile(uid) {
+  const modal = document.getElementById('profileModal');
+  const nameEl = document.getElementById('modalName');
+  const photoEl = document.getElementById('modalPhoto');
+  const bioEl = document.getElementById('modalBio');
+  const followBtn = document.getElementById('followBtn');
+  const viewBtn = document.getElementById('messageBtn');
+
+  try {
+    // Use cached data if available, otherwise fetch
+    let userData = userCache[uid];
+    if (!userData) {
+      const docSnap = await db.collection('users').doc(uid).get();
+      if (!docSnap.exists) {
+        showNotification("User not found");
+        return;
+      }
+      userData = docSnap.data();
+      userCache[uid] = userData;
+    }
+
+    // Update modal with user data
+    nameEl.textContent = userData.fullName || "Unknown User";
+    photoEl.src = userData.photoURL || "https://via.placeholder.com/120";
+    bioEl.textContent = userData.bio || "No bio yet.";
+    followBtn.textContent = userData.followers?.includes(currentUser.uid) ? "✔ Following" : "➕ Follow";
+
+    followBtn.onclick = async () => {
+      try {
+        const ref = db.collection('users').doc(uid);
+        const d = (await ref.get()).data();
+        let followers = d.followers || [];
+        
+        if (followers.includes(currentUser.uid)) {
+          followers = followers.filter(id => id !== currentUser.uid);
+        } else {
+          followers.push(currentUser.uid);
+        }
+        
+        await ref.update({ followers });
+        showProfile(uid); // Refresh the profile
+        showNotification(followers.includes(currentUser.uid) ? 'You are now following this user' : 'You unfollowed this user');
+      } catch (error) {
+        console.error('Error updating follow status:', error);
+        showNotification('Failed to update follow status');
+      }
+    };
+
+    viewBtn.onclick = () => { 
+      window.location.href = `user.html?uid=${uid}`; 
+    };
+    
+    modal.style.display = 'flex';
+    
+    // Set up real-time listener for profile updates
+    listenToUser(uid, updatedData => {
+      nameEl.textContent = updatedData.fullName || "Unknown User";
+      photoEl.src = updatedData.photoURL || "https://via.placeholder.com/120";
+      bioEl.textContent = updatedData.bio || "No bio yet.";
+      followBtn.textContent = updatedData.followers?.includes(currentUser.uid) ? "✔ Following" : "➕ Follow";
+    });
+  } catch (error) {
+    console.error('Error loading profile:', error);
+    showNotification('Failed to load profile');
+  }
+}
+
+
+function closeProfile() { 
+  profileModal.style.display = 'none'; 
+}
+
+// Expose functions globally
+window.likePost = likePost;
+window.addComment = addComment;
+window.toggleComments = toggleComments;
+window.showProfile = showProfile;
+window.closeProfile = closeProfile;
+
+</script>
+<script>
+  
+
+  async function updateVisitorStats() {
+    const statsRef = db.collection('visitors').doc('stats');
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+      await db.runTransaction(async (t) => {
+        const doc = await t.get(statsRef);
+        let data = doc.exists ? doc.data() : { total: 0, daily: {}, lastUpdated: "" };
+
+        if (!data.daily) data.daily = {};
+        data.daily[today] = (data.daily[today] || 0) + 1;
+        data.total = (data.total || 0) + 1;
+        data.lastUpdated = new Date().toLocaleString();
+
+        t.set(statsRef, data);
+      });
+
+      console.log("✅ Visitor stats updated successfully.");
+    } catch (error) {
+      console.error("❌ Error updating visitor stats:", error);
+    }
+  }
+
+  if (!sessionStorage.getItem("visited_today")) {
+    updateVisitorStats();
+    sessionStorage.setItem("visited_today", "true");
+  }
+</script>
+<script>
+// === NOTIFICATION SYSTEM ===
+
+// Grab elements
+const notifBtn = document.getElementById('notifBtn');
+const notifCount = document.getElementById('notifCount');
+const notifDropdown = document.getElementById('notifList');
+const notifSound = document.getElementById('notifSound');
+
+// User activity tracking
+let userActive = true;
+let lastActive = Date.now();
+const ACTIVITY_TIMEOUT = 1000 * 60 * 3; // 3 minutes
+
+window.addEventListener('mousemove', () => lastActive = Date.now());
+window.addEventListener('keydown', () => lastActive = Date.now());
+window.addEventListener('focus', () => userActive = true);
+window.addEventListener('blur', () => userActive = false);
+
+// === Helper: Play notification sound if user is active ===
+function playNotifSound() {
+  const activeRecently = (Date.now() - lastActive) < ACTIVITY_TIMEOUT;
+  if (userActive && activeRecently) {
+    notifSound.currentTime = 0;
+    notifSound.play().catch(() => {});
+  }
+}
+
+// === Listen for Notifications ===
+function listenForNotifications() {
+  if (!currentUser || !currentUser.uid) {
+    console.warn('User not signed in, skipping notifications.');
+    return;
+  }
+
+  db.collection('notifications')
+    .where('receiver', '==', currentUser.uid)
+    .orderBy('createdAt', 'desc')
+    .limit(20)
+    .onSnapshot(snapshot => {
+      if (snapshot.empty) {
+        notifDropdown.innerHTML = '<p style="padding:10px;">No notifications yet</p>';
+        notifCount.style.display = 'none';
+        return;
+      }
+
+      notifDropdown.innerHTML = ''; // Clear dropdown
+      let newCount = 0;
+
+      snapshot.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          playNotifSound(); // play sound only for new notifications
+        }
+      });
+
+      snapshot.forEach(doc => {
+        const n = doc.data();
+        const item = document.createElement('div');
+        item.className = 'notif-item';
+        item.style.padding = '8px';
+        item.style.borderBottom = '1px solid #ddd';
+        item.style.cursor = 'pointer';
+        item.style.background = n.read ? '#fff' : '#eef6ff';
+
+        const typeText = n.type === 'like' ? 'liked your post ❤️' : 'commented on your post 💬';
+        const senderName = n.senderName || 'Someone';
+        const time = n.createdAt?.toDate().toLocaleString() || '';
+
+        item.innerHTML = `
+          <strong>${senderName}</strong> ${typeText}<br>
+          <small style="color:gray;">${time}</small>
+        `;
+
+        item.addEventListener('click', async () => {
+          // Mark as read
+          await db.collection('notifications').doc(doc.id).update({ read: true });
+          notifDropdown.style.display = 'none';
+          openPost(n.postId);
+        });
+
+        notifDropdown.appendChild(item);
+        if (!n.read) newCount++;
+      });
+
+      // Update badge
+      if (newCount > 0) {
+        notifCount.style.display = 'flex';
+        notifCount.textContent = newCount;
+      } else {
+        notifCount.style.display = 'none';
+      }
+    }, err => {
+      console.error('Notification listener error:', err);
+    });
+}
+
+// === Open the specific post ===
+function openPost(postId) {
+  const postEl = document.getElementById(postId);
+
+  if (postEl) {
+    // The post is already on the page
+    postEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    postEl.classList.add('highlight');
+    setTimeout(() => postEl.classList.remove('highlight'), 2500);
+  } else {
+    // Redirect to feed page if not loaded
+    window.location.href = `feed.html?postId=${postId}`;
+  }
+}
+
+// === Toggle dropdown ===
+notifBtn.addEventListener('click', () => {
+  const isOpen = notifDropdown.style.display === 'block';
+  notifDropdown.style.display = isOpen ? 'none' : 'block';
+
+  if (!isOpen) {
+    // mark all as read when opening dropdown
+    clearAllNotifications();
+  }
+});
+
+// === Helper: Clear all notifications when opened ===
+async function clearAllNotifications() {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  const unread = await db.collection('notifications')
+    .where('receiver', '==', user.uid)
+    .where('read', '==', false)
+    .get();
+
+  unread.forEach(async doc => {
+    await doc.ref.update({ read: true });
+  });
+
+  notifCount.style.display = 'none';
+}
+
+// === Helper: Send notification ===
+async function sendNotification(receiverId, type, postId, senderName) {
+  if (!currentUser || receiverId === currentUser.uid) return; // Don't notify self
+
+  await db.collection('notifications').add({
+    receiver: receiverId,
+    sender: currentUser.uid,
+    senderName,
+    type,
+    postId,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    read: false
+  });
+}
+</script>
+</body>
+</html>
